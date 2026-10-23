@@ -30,7 +30,7 @@ web_thread.start()
 TOKEN = "8882501211:AAGQoteMJ86vBY-ShXYU3KjtvgsmNT07_9s"
 CHAT_ID = "-5318794924"
 
-# IDs para a API da CoinGecko
+# Mapeamento para a API
 ativos_ids = {
     "BTC": "bitcoin",
     "ETH": "ethereum",
@@ -57,18 +57,24 @@ def enviar_telegram(mensagem):
     except Exception as e:
         print(f"[ERRO TELEGRAM] {e}", flush=True)
 
-def obter_preco(ativo):
-    coin_id = ativos_ids.get(ativo, "bitcoin")
+def obter_todos_os_precos():
+    # Pedido único em lote para evitar bloqueios e obter preços em direto
     try:
-        url = f"https://api.coingecko.com/api/v3/simple/price?ids={coin_id}&vs_currencies=usd"
-        res = requests.get(url, timeout=10).json()
-        if coin_id in res and 'usd' in res[coin_id]:
-            return float(res[coin_id]['usd'])
+        url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana,binancecoin,sui&vs_currencies=usd"
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+        res = requests.get(url, headers=headers, timeout=10).json()
+        
+        precos = {}
+        for ativo, coin_id in ativos_ids.items():
+            if coin_id in res and 'usd' in res[coin_id]:
+                precos[ativo] = float(res[coin_id]['usd'])
+        
+        if len(precos) == len(ativos_ids):
+            return precos
     except Exception as e:
-        print(f"[ERRO API] Falha ao obter {ativo}: {e}", flush=True)
+        print(f"[ERRO API BATCH] {e}", flush=True)
     
-    precos_fallback = {"BTC": 81300.0, "ETH": 2400.0, "SOL": 170.0, "BNB": 620.0, "SUI": 2.30}
-    return precos_fallback.get(ativo, 100.0)
+    return None
 
 def main():
     print("🚀 [ROBÔ] A iniciar a lógica principal do Trafulha...", flush=True)
@@ -78,9 +84,15 @@ def main():
     
     portfolio = {}
     
-    # Registar o preço de compra inicial e calcular a quantidade de cada ativo
-    for ativo in ativos_ids.keys():
-        preco_inicial = obter_preco(ativo)
+    # Obter preços iniciais reais em direto
+    precos_iniciais = None
+    while not precos_iniciais:
+        precos_iniciais = obter_todos_os_precos()
+        if not precos_iniciais:
+            print("[ROBÔ] A aguardar ligação à API de preços...", flush=True)
+            time.sleep(5)
+            
+    for ativo, preco_inicial in precos_iniciais.items():
         investido = capital_alocado[ativo]
         quantidade = investido / preco_inicial if preco_inicial > 0 else 0
         
@@ -91,17 +103,23 @@ def main():
         }
         print(f"[ROBÔ] {ativo} - Compra: {preco_inicial} | Qtd: {quantidade:.4f}", flush=True)
         
-    enviar_telegram("📊 Configuração de portfólio concluída. A monitorizar os mercados em tempo real...")
+    enviar_telegram("📊 Configuração de portfólio concluída com preços reais. A monitorizar os mercados...")
 
     while True:
         try:
             print("[ROBÔ] A executar ciclo de verificação de preços...", flush=True)
-            relatorio = "📈 *Relatório de Portfólio (1000 USD) - Trafulha*\n\n"
+            precos_atuais = obter_todos_os_precos()
             
+            if not precos_atuais:
+                print("[ROBÔ] Falha ao atualizar preços neste ciclo, a tentar novamente no próximo...", flush=True)
+                time.sleep(60)
+                continue
+                
+            relatorio = "📈 *Relatório de Portfólio em Direto (1000 USD)*\n\n"
             valor_total_portfolio = 0
             
             for ativo, dados in portfolio.items():
-                preco_atual = obter_preco(ativo)
+                preco_atual = precos_atuais.get(ativo, dados["preco_compra"])
                 valor_atual = dados["quantidade"] * preco_atual
                 lucro_prejuizo = valor_atual - dados["investido"]
                 variacao = (lucro_prejuizo / dados["investido"]) * 100 if dados["investido"] > 0 else 0
@@ -110,8 +128,8 @@ def main():
                 valor_total_portfolio += valor_atual
                 
                 relatorio += f"*{ativo}*:\n" \
-                             f"• Alocado: `{dados['investido']:.2f} USD`\n" \
-                             f"• Atual: `{valor_atual:.2f} USD`\n" \
+                             f"• Compra: `{dados['preco_compra']:.2f} USD`\n" \
+                             f"• Atual: `{preco_atual:.2f} USD`\n" \
                              f"• P/L: {emoji} `{lucro_prejuizo:+.2f} USD` (`{variacao:+.2f}%`)\n\n"
             
             lucro_total_geral = valor_total_portfolio - 1000.0
