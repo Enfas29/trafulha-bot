@@ -30,13 +30,22 @@ web_thread.start()
 TOKEN = "8882501211:AAGQoteMJ86vBY-ShXYU3KjtvgsmNT07_9s"
 CHAT_ID = "-5318794924"
 
-# IDs corrigidos e validados para a API da CoinGecko
+# IDs para a API da CoinGecko
 ativos_ids = {
     "BTC": "bitcoin",
     "ETH": "ethereum",
     "SOL": "solana",
     "BNB": "binancecoin",
     "SUI": "sui"
+}
+
+# Capital alocado por cada ativo (Total = 1000 USD: 200 para BTC + 200 para os outros 4)
+capital_alocado = {
+    "BTC": 200.0,
+    "ETH": 200.0,
+    "SOL": 200.0,
+    "BNB": 200.0,
+    "SUI": 200.0
 }
 
 def enviar_telegram(mensagem):
@@ -58,7 +67,6 @@ def obter_preco(ativo):
     except Exception as e:
         print(f"[ERRO API] Falha ao obter {ativo}: {e}", flush=True)
     
-    # Fallback inteligente caso a API falhe num momento específico
     precos_fallback = {"BTC": 81300.0, "ETH": 2400.0, "SOL": 170.0, "BNB": 620.0, "SUI": 2.30}
     return precos_fallback.get(ativo, 100.0)
 
@@ -66,33 +74,52 @@ def main():
     print("🚀 [ROBÔ] A iniciar a lógica principal do Trafulha...", flush=True)
     time.sleep(3)
     
-    enviar_telegram("🤖 *Robô Trafulha* iniciado com sucesso na nuvem 24/7!")
+    enviar_telegram("🤖 *Robô Trafulha* iniciado com sucesso na nuvem 24/7!\n💰 *Caixa Total:* `1000.00 USD` (`200 USD` por ativo).")
     
     portfolio = {}
     
-    # Registar o preço de compra inicial de referência
+    # Registar o preço de compra inicial e calcular a quantidade comprada de cada ativo
     for ativo in ativos_ids.keys():
-        preco = obter_preco(ativo)
-        portfolio[ativo] = preco
-        print(f"[ROBÔ] Preço de compra inicial de {ativo}: {preco}", flush=True)
+        preco_inicial = obter_preco(ativo)
+        investido = capital_alocado[ativo]
+        quantidade = investido / preco_inicial if preco_inicial > 0 else 0
         
-    enviar_telegram("📊 Configuração inicial concluída. A monitorizar os mercados em tempo real...")
+        portfolio[ativo] = {
+            "preco_compra": preco_inicial,
+            "quantidade": quantidade,
+            "investido": investido
+        }
+        print(f"[ROBÔ] {ativo} - Compra: {preco_inicial} | Qtd: {quantidade:.4f}", flush=True)
+        
+    enviar_telegram("📊 Configuração inicial de portfólio concluída. A monitorizar os mercados...")
 
     while True:
         try:
             print("[ROBÔ] A executar ciclo de verificação de preços...", flush=True)
-            relatorio = "📈 *Relatório Detalhado - Trafulha*\n\n"
+            relatorio = "📈 *Relatório de Portfólio (1000 USD) - Trafulha*\n\n"
             
-            for ativo, preco_compra in portfolio.items():
+            valor_total_portfolio = 0
+            
+            for ativo, dados in portfolio.items():
                 preco_atual = obter_preco(ativo)
-                dif = preco_atual - preco_compra
-                variacao = (dif / preco_compra) * 100 if preco_compra > 0 else 0
-                emoji = "🟢" if variacao >= 0 else "🔴"
+                valor_atual = dados["quantidade"] * preco_atual
+                lucro_prejuizo = valor_atual - dados["investido"]
+                variacao = (lucro_prejuizo / dados["investido"]) * 100 if dados["investido"] > 0 else 0
+                emoji = "🟢" if lucro_prejuizo >= 0 else "🔴"
+                
+                valor_total_portfolio += valor_atual
                 
                 relatorio += f"*{ativo}*:\n" \
-                             f"• Compra: `{preco_compra:.2f} USD`\n" \
-                             f"• Atual: `{preco_atual:.2f} USD`\n" \
-                             f"• Lucro/Prejuízo: {emoji} `{dif:+.2f} USD` (`{variacao:+.2f}%`)\n\n"
+                             f"• Investido: `{dados['investido']:.2f} USD`\n" \
+                             f"• Valor Atual: `{valor_atual:.2f} USD`\n" \
+                             f"• P/L: {emoji} `{lucro_prejuizo:+.2f} USD` (`{variacao:+.2f}%`)\n\n"
+            
+            lucro_total_geral = valor_total_portfolio - 1000.0
+            variacao_total = (lucro_total_geral / 1000.0) * 100
+             emoji_geral = "🟢" if lucro_total_geral >= 0 else "🔴"
+            
+            relatorio += f"💼 *Total da Carteira:* `1000 USD` ➡️ `{valor_total_portfolio:.2f} USD`\n" \
+                         f"📊 *Lucro/Prejuízo Global:* {emoji_geral} `{lucro_total_geral:+.2f} USD` (`{variacao_total:+.2f}%`)"
             
             enviar_telegram(relatorio)
         except Exception as e:
