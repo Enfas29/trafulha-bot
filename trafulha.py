@@ -28,7 +28,7 @@ web_thread.start()
 
 # --- Configuração do Robô de Trading ---
 # ATENÇÃO: Confirma se este Token está correto no BotFather caso dê erro 401
-TOKEN = "8882501211:AAFDhktaz51HqJ_SYuiExFlhbyWXvJDgEo"
+TOKEN = "8882501211:AAGQoteMJ86vBY-ShXYU3KjtvgsmNT07_9s"
 CHAT_ID = "-5318794924"
 
 # Mapeamento dos ativos para os IDs da CoinCap
