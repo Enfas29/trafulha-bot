@@ -122,7 +122,7 @@ def main():
             print(f"[ERRO CICLO] {e}", flush=True)
         
         print("[ROBÔ] Ciclo terminado. A aguardar 1 hora...", flush=True)
-        time.sleep(3600)
+        time.sleep(900)
 
 if __name__ == "__main__":
     main()
