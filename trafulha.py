@@ -30,7 +30,6 @@ web_thread.start()
 TOKEN = "8882501211:AAGQoteMJ86vBY-ShXYU3KjtvgsmNT07_9s"
 CHAT_ID = "-5318794924"
 
-# Ativos monitorizados
 ativos_alvo = ["BTC", "ETH", "SOL", "BNB", "SUI"]
 
 capital_alocado = {
@@ -171,8 +170,9 @@ def main():
                 
             caminho_grafico = gerar_grafico(historico_tempos, historico_valores)
             
-            enviar_telegram_texto(relatorio)
+            # ORDEM ALTERADA: Envia primeiro a foto do gráfico e só depois o texto do relatório
             enviar_telegram_foto(caminho_grafico)
+            enviar_telegram_texto(relatorio)
             
         except Exception as e:
             print(f"[ERRO CICLO] {e}", flush=True)
