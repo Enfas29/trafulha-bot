@@ -27,9 +27,18 @@ web_thread = threading.Thread(target=run_web, daemon=True)
 web_thread.start()
 
 # --- Configuração do Robô de Trading ---
+# ATENÇÃO: Confirma se este Token está correto no BotFather caso dê erro 401
 TOKEN = "8882501211:AAFDhktaz51HqJ_SYuiExFlhbyWXvJDgEo"
 CHAT_ID = "-5318794924"
-ativos = ["BTC", "ETH", "SOL", "BNB", "SUI"]
+
+# Mapeamento dos ativos para os IDs da CoinCap
+ativos_ids = {
+    "BTC": "bitcoin",
+    "ETH": "ethereum",
+    "SOL": "solana",
+    "BNB": "binance-coin",
+    "SUI": "sui"
+}
 
 def enviar_telegram(mensagem):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
@@ -42,12 +51,13 @@ def enviar_telegram(mensagem):
         print(f"[ERRO TELEGRAM] Falha ao enviar mensagem: {e}", flush=True)
 
 def obter_preco(ativo):
+    coin_id = ativos_ids.get(ativo, "bitcoin")
     try:
-        url = f"https://api.binance.com/api/v3/ticker/price?symbol={ativo}USDT"
+        url = f"https://api.coincap.io/v2/assets/{coin_id}"
         res = requests.get(url, timeout=10).json()
-        return float(res['price'])
+        return float(res['data']['priceUsd'])
     except Exception as e:
-        print(f"[ERRO BINANCE] Falha ao obter preço para {ativo}: {e}", flush=True)
+        print(f"[ERRO API] Falha ao obter preço para {ativo}: {e}", flush=True)
         precos_base = {"BTC": 65000, "ETH": 3500, "SOL": 150, "BNB": 600, "SUI": 2}
         return precos_base.get(ativo, 100)
 
@@ -57,9 +67,9 @@ def main():
     
     enviar_telegram("🤖 *Robô Trafulha* iniciado com sucesso na nuvem 24/7!")
     
-    portfolio = {ativo: {"preco_compra": 0} for ativo in ativos}
+    portfolio = {ativo: {"preco_compra": 0} for ativo in ativos_ids.keys()}
     
-    for ativo in ativos:
+    for ativo in ativos_ids.keys():
         preco = obter_preco(ativo)
         portfolio[ativo]["preco_compra"] = preco
         print(f"[ROBÔ] Preço inicial {ativo}: {preco}", flush=True)
@@ -70,7 +80,7 @@ def main():
         try:
             print("[ROBÔ] A executar ciclo de verificação de preços...", flush=True)
             relatorio = "📈 *Relatório de Estado - Trafulha*\n\n"
-            for ativo in ativos:
+            for ativo in ativos_ids.keys():
                 preco_atual = obter_preco(ativo)
                 preco_compra = portfolio[ativo]["preco_compra"]
                 variacao = ((preco_atual - preco_compra) / preco_compra) * 100
