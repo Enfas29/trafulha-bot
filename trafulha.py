@@ -7,23 +7,24 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from flask import Flask
 
-print("--- INICIO DO SCRIPT TRAFULHA ---")
+print("--- INICIO DO SCRIPT TRAFULHA ---", flush=True)
 
 # --- Configuração do Servidor Web (Flask para o Render) ---
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    print("[WEB] Recebido pedido HTTP no Flask!")
+    print("[WEB] Recebido pedido HTTP no Flask!", flush=True)
     return "Robô Trafulha a operar 24/7!"
 
 def run_web():
     port = int(os.environ.get("PORT", 10000))
-    print(f"[WEB] A iniciar servidor Flask na porta {port}...")
-    app.run(host="0.0.0.0", port=port)
+    print(f"[WEB] A iniciar servidor Flask na porta {port}...", flush=True)
+    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
 # Iniciar o servidor Flask numa thread separada
-threading.Thread(target=run_web, daemon=True).start()
+web_thread = threading.Thread(target=run_web, daemon=True)
+web_thread.start()
 
 # --- Configuração do Robô de Trading ---
 TOKEN = "8882501211:AAFDhktaz51HqJ_SYuiExFlhbyWXvJDgEo"
@@ -34,11 +35,11 @@ def enviar_telegram(mensagem):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     payload = {"chat_id": CHAT_ID, "text": mensagem, "parse_mode": "Markdown"}
     try:
-        print(f"[TELEGRAM] A enviar mensagem para o chat {CHAT_ID}...")
+        print(f"[TELEGRAM] A enviar mensagem para o chat {CHAT_ID}...", flush=True)
         response = requests.post(url, json=payload, timeout=10)
-        print(f"[TELEGRAM] Resposta da API: {response.status_code} - {response.text}")
+        print(f"[TELEGRAM] Resposta da API: {response.status_code} - {response.text}", flush=True)
     except Exception as e:
-        print(f"[ERRO TELEGRAM] Falha ao enviar mensagem: {e}")
+        print(f"[ERRO TELEGRAM] Falha ao enviar mensagem: {e}", flush=True)
 
 def obter_preco(ativo):
     try:
@@ -46,13 +47,13 @@ def obter_preco(ativo):
         res = requests.get(url, timeout=10).json()
         return float(res['price'])
     except Exception as e:
-        print(f"[ERRO BINANCE] Falha ao obter preço para {ativo}: {e}")
+        print(f"[ERRO BINANCE] Falha ao obter preço para {ativo}: {e}", flush=True)
         precos_base = {"BTC": 65000, "ETH": 3500, "SOL": 150, "BNB": 600, "SUI": 2}
         return precos_base.get(ativo, 100)
 
 def main():
-    print("🚀 [ROBÔ] A entrar na função main()...")
-    time.sleep(2)  # Pequena pausa para garantir que o Flask estabilizou
+    print("🚀 [ROBÔ] A iniciar a lógica principal do Trafulha...", flush=True)
+    time.sleep(3)  # Aguardar estabilização do Flask
     
     enviar_telegram("🤖 *Robô Trafulha* iniciado com sucesso na nuvem 24/7!")
     
@@ -61,13 +62,13 @@ def main():
     for ativo in ativos:
         preco = obter_preco(ativo)
         portfolio[ativo]["preco_compra"] = preco
-        print(f"[ROBÔ] Preço inicial {ativo}: {preco}")
+        print(f"[ROBÔ] Preço inicial {ativo}: {preco}", flush=True)
         
     enviar_telegram("📊 Configuração inicial concluída. A monitorizar os mercados...")
 
     while True:
         try:
-            print("[ROBÔ] A executar ciclo de verificação de preços...")
+            print("[ROBÔ] A executar ciclo de verificação de preços...", flush=True)
             relatorio = "📈 *Relatório de Estado - Trafulha*\n\n"
             for ativo in ativos:
                 preco_atual = obter_preco(ativo)
@@ -78,9 +79,9 @@ def main():
             
             enviar_telegram(relatorio)
         except Exception as e:
-            print(f"[ERRO CICLO] Erro no ciclo do robô: {e}")
+            print(f"[ERRO CICLO] Erro no ciclo do robô: {e}", flush=True)
         
-        print("[ROBÔ] Ciclo terminado. A aguardar 1 hora...")
+        print("[ROBÔ] Ciclo terminado. A aguardar 1 hora...", flush=True)
         time.sleep(3600)
 
 if __name__ == "__main__":
