@@ -7,7 +7,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from flask import Flask
 
-# --- Configuração do Servidor Web (Flask para manter o Render acordado) ---
+# --- Configuração do Servidor Web (Flask para o Render) ---
 app = Flask(__name__)
 
 @app.route('/')
@@ -18,7 +18,7 @@ def run_web():
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
 
-# Iniciar o servidor web numa thread separada para não bloquear o robô
+# Iniciar o servidor Flask numa thread separada
 threading.Thread(target=run_web, daemon=True).start()
 
 # --- Configuração do Robô de Trading ---
@@ -30,28 +30,31 @@ def enviar_telegram(mensagem):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     payload = {"chat_id": CHAT_ID, "text": mensagem, "parse_mode": "Markdown"}
     try:
-        requests.post(url, json=payload)
+        response = requests.post(url, json=payload, timeout=10)
+        print(f"[LOG TELEGRAM] Status: {response.status_code} | Resposta: {response.text}")
     except Exception as e:
-        print(f"Erro ao enviar mensagem para o Telegram: {e}")
+        print(f"[ERRO TELEGRAM] Falha ao enviar mensagem: {e}")
 
 def obter_preco(ativo):
     try:
         url = f"https://api.binance.com/api/v3/ticker/price?symbol={ativo}USDT"
         res = requests.get(url, timeout=10).json()
         return float(res['price'])
-    except Exception:
-        # Fallback de segurança caso a API falhe temporariamente
+    except Exception as e:
+        print(f"[ERRO BINANCE] Falha ao obter preço para {ativo}: {e}")
         precos_base = {"BTC": 65000, "ETH": 3500, "SOL": 150, "BNB": 600, "SUI": 2}
         return precos_base.get(ativo, 100)
 
 def main():
+    print("🚀 A arrancar a lógica do Trafulha...")
+    
+    # Teste de envio imediato ao arrancar
     enviar_telegram("🤖 *Robô Trafulha* iniciado com sucesso na nuvem 24/7!")
     
     portfolio = {ativo: {"preco_compra": 0} for ativo in ativos}
     
-    # Preço inicial de referência
     for ativo in ativos:
-        portfolio[ativo]["preco_compra"] = obtain_price = obter_preco(ativo)
+        portfolio[ativo]["preco_compra"] = obter_preco(ativo)
         
     enviar_telegram("📊 Configuração inicial concluída. A monitorizar os mercados...")
 
@@ -67,9 +70,9 @@ def main():
             
             enviar_telegram(relatorio)
         except Exception as e:
-            print(f"Erro no ciclo do robô: {e}")
+            print(f"[ERRO CICLO] Erro no ciclo do robô: {e}")
         
-        # Aguardar 1 hora antes do próximo ciclo de verificação
+        # Aguardar 1 hora antes do próximo ciclo
         time.sleep(3600)
 
 if __name__ == "__main__":
