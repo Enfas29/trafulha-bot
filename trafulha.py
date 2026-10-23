@@ -30,8 +30,15 @@ web_thread.start()
 TOKEN = "8882501211:AAGQoteMJ86vBY-ShXYU3KjtvgsmNT07_9s"
 CHAT_ID = "-5318794924"
 
-# Pares de ativos e capital alocado exatamente como pedido:
-# BTC: 200, ETH: 100, SOL: 100, BNB: 100, SUI: 100 (Total = 600 USD)
+ativos_ids = {
+    "BTC": "bitcoin",
+    "ETH": "ethereum",
+    "SOL": "solana",
+    "BNB": "binancecoin",
+    "SUI": "sui"
+}
+
+# Capital alocado por ativo: BTC = 200 USD | Outros = 100 USD cada
 capital_alocado = {
     "BTC": 200.0,
     "ETH": 100.0,
@@ -49,20 +56,23 @@ def enviar_telegram(mensagem):
     except Exception as e:
         print(f"[ERRO TELEGRAM] {e}", flush=True)
 
-def obter_preco(ativo):
+def obter_todos_os_precos():
     try:
-        par = f"{ativo}USDT"
-        url = f"https://api.binance.com/api/v3/ticker/price?symbol={par}"
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        res = requests.get(url, headers=headers, timeout=5).json()
-        if 'price' in res:
-            return float(res['price'])
+        url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana,binancecoin,sui&vs_currencies=usd"
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+        res = requests.get(url, headers=headers, timeout=10).json()
+        
+        precos = {}
+        for ativo, coin_id in ativos_ids.items():
+            if coin_id in res and 'usd' in res[coin_id]:
+                precos[ativo] = float(res[coin_id]['usd'])
+        
+        if len(precos) == len(ativos_ids):
+            return precos
     except Exception as e:
-        print(f"[ERRO API Binance] {ativo}: {e}", flush=True)
+        print(f"[ERRO API COINGECKO] {e}", flush=True)
     
-    # Fallback dinâmico caso a rede falhe
-    precos_fallback = {"BTC": 81000.0, "ETH": 2400.0, "SOL": 170.0, "BNB": 620.0, "SUI": 2.30}
-    return precos_fallback.get(ativo, 100.0)
+    return None
 
 def main():
     print("🚀 [ROBÔ] A iniciar a lógica principal do Trafulha...", flush=True)
@@ -73,9 +83,16 @@ def main():
     
     portfolio = {}
     
-    # Registar preços iniciais e calcular a quantidade comprada de cada ativo
+    # Obter preços iniciais reais em direto
+    precos_iniciais = None
+    while not precos_iniciais:
+        precos_iniciais = obter_todos_os_precos()
+        if not precos_iniciais:
+            print("[ROBÔ] A aguardar ligação à API de preços...", flush=True)
+            time.sleep(5)
+            
     for ativo, investido in capital_alocado.items():
-        preco_inicial = obter_preco(ativo)
+        preco_inicial = precos_iniciais[ativo]
         quantidade = investido / preco_inicial if preco_inicial > 0 else 0
         
         portfolio[ativo] = {
@@ -83,19 +100,25 @@ def main():
             "quantidade": quantidade,
             "investido": investido
         }
-        print(f"[ROBÔ] {ativo} - Investido: {investido} | Preço Compra: {preco_inicial} | Qtd: {quantidade:.4f}", flush=True)
+        print(f"[ROBÔ] {ativo} - Compra: {preco_inicial:.2f} | Qtd: {quantidade:.4f}", flush=True)
         
-    enviar_telegram("📊 Configuração concluída com valores reais. A monitorizar os mercados...")
+    enviar_telegram("📊 Configuração concluída com preços reais ao cêntimo. A monitorizar os mercados...")
 
     while True:
         try:
             print("[ROBÔ] A executar ciclo de verificação de preços...", flush=True)
-            relatorio = "📈 *Relatório de Portfólio - Trafulha*\n\n"
+            precos_atuais = obter_todos_os_precos()
             
+            if not precos_atuais:
+                print("[ROBÔ] Falha ao atualizar preços neste ciclo, a tentar novamente...", flush=True)
+                time.sleep(60)
+                continue
+                
+            relatorio = "📈 *Relatório de Portfólio (Preços Reais)*\n\n"
             valor_total_portfolio = 0
             
             for ativo, dados in portfolio.items():
-                preco_atual = obter_preco(ativo)
+                preco_atual = precos_atuais.get(ativo, dados["preco_compra"])
                 valor_atual = dados["quantidade"] * preco_atual
                 lucro_prejuizo = valor_atual - dados["investido"]
                 variacao = (lucro_prejuizo / dados["investido"]) * 100 if dados["investido"] > 0 else 0
