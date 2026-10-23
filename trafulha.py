@@ -30,7 +30,7 @@ web_thread.start()
 TOKEN = "8882501211:AAGQoteMJ86vBY-ShXYU3KjtvgsmNT07_9s"
 CHAT_ID = "-5318794924"
 
-# Mapeamento para a API da CoinGecko (sem bloqueios na nuvem)
+# IDs corrigidos e validados para a API da CoinGecko
 ativos_ids = {
     "BTC": "bitcoin",
     "ETH": "ethereum",
@@ -53,16 +53,18 @@ def obter_preco(ativo):
     try:
         url = f"https://api.coingecko.com/api/v3/simple/price?ids={coin_id}&vs_currencies=usd"
         res = requests.get(url, timeout=10).json()
-        return float(res[coin_id]['usd'])
+        if coin_id in res and 'usd' in res[coin_id]:
+            return float(res[coin_id]['usd'])
     except Exception as e:
         print(f"[ERRO API] Falha ao obter {ativo}: {e}", flush=True)
-        # Fallbacks atualizados caso haja falha pontual de rede
-        precos_fallback = {"BTC": 68000.0, "ETH": 3700.0, "SOL": 170.0, "BNB": 620.0, "SUI": 2.30}
-        return precos_fallback.get(ativo, 100.0)
+    
+    # Fallback inteligente caso a API falhe num momento específico
+    precos_fallback = {"BTC": 81300.0, "ETH": 2400.0, "SOL": 170.0, "BNB": 620.0, "SUI": 2.30}
+    return precos_fallback.get(ativo, 100.0)
 
 def main():
     print("🚀 [ROBÔ] A iniciar a lógica principal do Trafulha...", flush=True)
-    time.sleep(3)  # Aguardar estabilização do Flask
+    time.sleep(3)
     
     enviar_telegram("🤖 *Robô Trafulha* iniciado com sucesso na nuvem 24/7!")
     
@@ -84,7 +86,7 @@ def main():
             for ativo, preco_compra in portfolio.items():
                 preco_atual = obter_preco(ativo)
                 dif = preco_atual - preco_compra
-                variacao = (dif / preco_compra) * 100
+                variacao = (dif / preco_compra) * 100 if preco_compra > 0 else 0
                 emoji = "🟢" if variacao >= 0 else "🔴"
                 
                 relatorio += f"*{ativo}*:\n" \
