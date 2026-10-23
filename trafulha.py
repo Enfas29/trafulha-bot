@@ -42,10 +42,10 @@ ativos_ids = {
 # Capital alocado por cada ativo (Total = 1000 USD: 200 para cada um dos 5 ativos)
 capital_alocado = {
     "BTC": 200.0,
-    "ETH": 200.0,
-    "SOL": 200.0,
-    "BNB": 200.0,
-    "SUI": 200.0
+    "ETH": 100.0,
+    "SOL": 100.0,
+    "BNB": 100.0,
+    "SUI": 100.0
 }
 
 def enviar_telegram(mensagem):
