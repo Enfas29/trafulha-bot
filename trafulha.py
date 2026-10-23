@@ -30,32 +30,35 @@ web_thread.start()
 TOKEN = "8882501211:AAGQoteMJ86vBY-ShXYU3KjtvgsmNT07_9s"
 CHAT_ID = "-5318794924"
 
-ativos = ["BTC", "ETH", "SOL", "BNB", "SUI"]
+# Mapeamento para a API da CoinGecko (sem bloqueios na nuvem)
+ativos_ids = {
+    "BTC": "bitcoin",
+    "ETH": "ethereum",
+    "SOL": "solana",
+    "BNB": "binancecoin",
+    "SUI": "sui"
+}
 
 def enviar_telegram(mensagem):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     payload = {"chat_id": CHAT_ID, "text": mensagem, "parse_mode": "Markdown"}
     try:
-        print(f"[TELEGRAM] A enviar mensagem para o chat {CHAT_ID}...", flush=True)
         response = requests.post(url, json=payload, timeout=10)
-        print(f"[TELEGRAM] Resposta da API: {response.status_code} - {response.text}", flush=True)
+        print(f"[TELEGRAM] Resposta da API: {response.status_code}", flush=True)
     except Exception as e:
-        print(f"[ERRO TELEGRAM] Falha ao enviar mensagem: {e}", flush=True)
+        print(f"[ERRO TELEGRAM] {e}", flush=True)
 
 def obter_preco(ativo):
+    coin_id = ativos_ids.get(ativo, "bitcoin")
     try:
-        pares = {"BTC": "BTCUSDT", "ETH": "ETHUSDT", "SOL": "SOLUSDT", "BNB": "BNBUSDT", "SUI": "SUIUSDT"}
-        par = pares.get(ativo, "BTCUSDT")
-        url = f"https://api.binance.com/api/v3/ticker/price?symbol={par}"
-        res = requests.get(url, timeout=5).json()
-        if 'price' in res:
-            return float(res['price'])
-    except Exception:
-        pass
-
-    # Fallback de segurança dinâmico caso a rede falhe temporariamente
-    precos_base = {"BTC": 67000.0, "ETH": 3600.0, "SOL": 160.0, "BNB": 610.0, "SUI": 2.20}
-    return precos_base.get(ativo, 100.0)
+        url = f"https://api.coingecko.com/api/v3/simple/price?ids={coin_id}&vs_currencies=usd"
+        res = requests.get(url, timeout=10).json()
+        return float(res[coin_id]['usd'])
+    except Exception as e:
+        print(f"[ERRO API] Falha ao obter {ativo}: {e}", flush=True)
+        # Fallbacks atualizados caso haja falha pontual de rede
+        precos_fallback = {"BTC": 68000.0, "ETH": 3700.0, "SOL": 170.0, "BNB": 620.0, "SUI": 2.30}
+        return precos_fallback.get(ativo, 100.0)
 
 def main():
     print("🚀 [ROBÔ] A iniciar a lógica principal do Trafulha...", flush=True)
@@ -63,29 +66,35 @@ def main():
     
     enviar_telegram("🤖 *Robô Trafulha* iniciado com sucesso na nuvem 24/7!")
     
-    portfolio = {ativo: {"preco_compra": 0} for ativo in ativos}
+    portfolio = {}
     
-    for ativo in ativos:
+    # Registar o preço de compra inicial de referência
+    for ativo in ativos_ids.keys():
         preco = obter_preco(ativo)
-        portfolio[ativo]["preco_compra"] = preco
-        print(f"[ROBÔ] Preço inicial {ativo}: {preco}", flush=True)
+        portfolio[ativo] = preco
+        print(f"[ROBÔ] Preço de compra inicial de {ativo}: {preco}", flush=True)
         
-    enviar_telegram("📊 Configuração inicial concluída. A monitorizar os mercados...")
+    enviar_telegram("📊 Configuração inicial concluída. A monitorizar os mercados em tempo real...")
 
     while True:
         try:
             print("[ROBÔ] A executar ciclo de verificação de preços...", flush=True)
-            relatorio = "📈 *Relatório de Estado - Trafulha*\n\n"
-            for ativo in ativos:
+            relatorio = "📈 *Relatório Detalhado - Trafulha*\n\n"
+            
+            for ativo, preco_compra in portfolio.items():
                 preco_atual = obter_preco(ativo)
-                preco_compra = portfolio[ativo]["preco_compra"]
-                variacao = ((preco_atual - preco_compra) / preco_compra) * 100
+                dif = preco_atual - preco_compra
+                variacao = (dif / preco_compra) * 100
                 emoji = "🟢" if variacao >= 0 else "🔴"
-                relatorio += f"*{ativo}*: `{preco_atual:.2f} USD` ({emoji} `{variacao:+.2f}%`)\n"
+                
+                relatorio += f"*{ativo}*:\n" \
+                             f"• Compra: `{preco_compra:.2f} USD`\n" \
+                             f"• Atual: `{preco_atual:.2f} USD`\n" \
+                             f"• Lucro/Prejuízo: {emoji} `{dif:+.2f} USD` (`{variacao:+.2f}%`)\n\n"
             
             enviar_telegram(relatorio)
         except Exception as e:
-            print(f"[ERRO CICLO] Erro no ciclo do robô: {e}", flush=True)
+            print(f"[ERRO CICLO] {e}", flush=True)
         
         print("[ROBÔ] Ciclo terminado. A aguardar 1 hora...", flush=True)
         time.sleep(3600)
