@@ -7,15 +7,19 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from flask import Flask
 
+print("--- INICIO DO SCRIPT TRAFULHA ---")
+
 # --- Configuração do Servidor Web (Flask para o Render) ---
 app = Flask(__name__)
 
 @app.route('/')
 def home():
+    print("[WEB] Recebido pedido HTTP no Flask!")
     return "Robô Trafulha a operar 24/7!"
 
 def run_web():
     port = int(os.environ.get("PORT", 10000))
+    print(f"[WEB] A iniciar servidor Flask na porta {port}...")
     app.run(host="0.0.0.0", port=port)
 
 # Iniciar o servidor Flask numa thread separada
@@ -30,8 +34,9 @@ def enviar_telegram(mensagem):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     payload = {"chat_id": CHAT_ID, "text": mensagem, "parse_mode": "Markdown"}
     try:
+        print(f"[TELEGRAM] A enviar mensagem para o chat {CHAT_ID}...")
         response = requests.post(url, json=payload, timeout=10)
-        print(f"[LOG TELEGRAM] Status: {response.status_code} | Resposta: {response.text}")
+        print(f"[TELEGRAM] Resposta da API: {response.status_code} - {response.text}")
     except Exception as e:
         print(f"[ERRO TELEGRAM] Falha ao enviar mensagem: {e}")
 
@@ -46,20 +51,23 @@ def obter_preco(ativo):
         return precos_base.get(ativo, 100)
 
 def main():
-    print("🚀 A arrancar a lógica do Trafulha...")
+    print("🚀 [ROBÔ] A entrar na função main()...")
+    time.sleep(2)  # Pequena pausa para garantir que o Flask estabilizou
     
-    # Teste de envio imediato ao arrancar
     enviar_telegram("🤖 *Robô Trafulha* iniciado com sucesso na nuvem 24/7!")
     
     portfolio = {ativo: {"preco_compra": 0} for ativo in ativos}
     
     for ativo in ativos:
-        portfolio[ativo]["preco_compra"] = obter_preco(ativo)
+        preco = obter_preco(ativo)
+        portfolio[ativo]["preco_compra"] = preco
+        print(f"[ROBÔ] Preço inicial {ativo}: {preco}")
         
     enviar_telegram("📊 Configuração inicial concluída. A monitorizar os mercados...")
 
     while True:
         try:
+            print("[ROBÔ] A executar ciclo de verificação de preços...")
             relatorio = "📈 *Relatório de Estado - Trafulha*\n\n"
             for ativo in ativos:
                 preco_atual = obter_preco(ativo)
@@ -72,7 +80,7 @@ def main():
         except Exception as e:
             print(f"[ERRO CICLO] Erro no ciclo do robô: {e}")
         
-        # Aguardar 1 hora antes do próximo ciclo
+        print("[ROBÔ] Ciclo terminado. A aguardar 1 hora...")
         time.sleep(3600)
 
 if __name__ == "__main__":
