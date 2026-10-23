@@ -2,6 +2,7 @@ import os
 import time
 import threading
 import requests
+import datetime
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -38,7 +39,7 @@ ativos_ids = {
     "SUI": "sui"
 }
 
-# Capital alocado por ativo: BTC = 200 USD | Outros = 100 USD cada
+# Capital alocado por ativo: BTC = 200 USD | Outros = 100 USD cada (Total = 600 USD)
 capital_alocado = {
     "BTC": 200.0,
     "ETH": 100.0,
@@ -47,14 +48,19 @@ capital_alocado = {
     "SUI": 100.0
 }
 
-def enviar_telegram(mensagem):
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": mensagem, "parse_mode": "Markdown"}
+# Histórico para o gráfico
+historico_tempos = []
+historico_valores = []
+
+def enviar_telegram_com_foto(mensagem, caminho_img):
+    url = f"https://api.telegram.org/bot{TOKEN}/sendPhoto"
     try:
-        response = requests.post(url, json=payload, timeout=10)
-        print(f"[TELEGRAM] Resposta da API: {response.status_code}", flush=True)
+        with open(caminho_img, 'rb') as foto:
+            payload = {"chat_id": CHAT_ID, "caption": mensagem, "parse_mode": "Markdown"}
+            response = requests.post(url, data=payload, files={"photo": foto}, timeout=15)
+            print(f"[TELEGRAM FOTO] Resposta da API: {response.status_code}", flush=True)
     except Exception as e:
-        print(f"[ERRO TELEGRAM] {e}", flush=True)
+        print(f"[ERRO TELEGRAM FOTO] {e}", flush=True)
 
 def obter_todos_os_precos():
     try:
@@ -74,16 +80,28 @@ def obter_todos_os_precos():
     
     return None
 
+def gerar_grafico(tempos, valores):
+    plt.figure(figsize=(10, 5))
+    plt.plot(tempos, valores, marker='o', color='#2ecc71', linewidth=2, markersize=6)
+    plt.title('Evolução do Portfólio Trafulha (USD)', fontsize=14, fontweight='bold', color='#2c3e50')
+    plt.xlabel('Hora do Registo', fontsize=11)
+    plt.ylabel('Valor Total (USD)', fontsize=11)
+    plt.grid(True, linestyle='--', alpha=0.6)
+    plt.xticks(rotation=30)
+    plt.tight_layout()
+    
+    caminho_img = 'grafico_portfolio.png'
+    plt.savefig(caminho_img, dpi=150)
+    plt.close()
+    return caminho_img
+
 def main():
     print("🚀 [ROBÔ] A iniciar a lógica principal do Trafulha...", flush=True)
     time.sleep(3)
     
     caixa_total = sum(capital_alocado.values())
-    enviar_telegram(f"🤖 *Robô Trafulha* iniciado com sucesso na nuvem 24/7!\n💰 *Caixa Total:* `{caixa_total:.2f} USD` (BTC: 200 | Outros: 100).")
     
     portfolio = {}
-    
-    # Obter preços iniciais reais em direto
     precos_iniciais = None
     while not precos_iniciais:
         precos_iniciais = obter_todos_os_precos()
@@ -100,9 +118,8 @@ def main():
             "quantidade": quantidade,
             "investido": investido
         }
-        print(f"[ROBÔ] {ativo} - Compra: {preco_inicial:.2f} | Qtd: {quantidade:.4f}", flush=True)
-        
-    enviar_telegram("📊 Configuração concluída com preços reais ao cêntimo. A monitorizar os mercados...")
+    
+    print("[ROBÔ] Configuração inicial concluída.", flush=True)
 
     while True:
         try:
@@ -114,7 +131,7 @@ def main():
                 time.sleep(60)
                 continue
                 
-            relatorio = "📈 *Relatório de Portfólio (Preços Reais)*\n\n"
+            relatorio = "📈 *Relatório de Portfólio com Gráfico*\n\n"
             valor_total_portfolio = 0
             
             for ativo, dados in portfolio.items():
@@ -127,25 +144,40 @@ def main():
                 valor_total_portfolio += valor_atual
                 
                 relatorio += f"*{ativo}*:\n" \
-                             f"• Preço Atual da Moeda: `{preco_atual:.2f} USD`\n" \
-                             f"• Valor Investido: `{dados['investido']:.2f} USD`\n" \
-                             f"• Valor Atual na Posição: `{valor_atual:.2f} USD`\n" \
-                             f"• Lucro/Prejuízo: {emoji} `{lucro_prejuizo:+.2f} USD` (`{variacao:+.2f}%`)\n\n"
+                             f"• Preço Atual: `{preco_atual:.2f} USD`\n" \
+                             f"• Investido: `{dados['investido']:.2f} USD`\n" \
+                             f"• Valor Atual: `{valor_atual:.2f} USD`\n" \
+                             f"• P/L: {emoji} `{lucro_prejuizo:+.2f} USD` (`{variacao:+.2f}%`)\n\n"
             
             lucro_total_geral = valor_total_portfolio - caixa_total
             variacao_total = (lucro_total_geral / caixa_total) * 100
             emoji_geral = "🟢" if lucro_total_geral >= 0 else "🔴"
             
-            relatorio += f"💼 *Caixa Total Inicial:* `{caixa_total:.2f} USD`\n" \
-                         f"💼 *Valor Total Atual:* `{valor_total_portfolio:.2f} USD`\n" \
+            relatorio += f"💼 *Caixa Inicial:* `{caixa_total:.2f} USD`\n" \
+                         f"💼 *Valor Atual:* `{valor_total_portfolio:.2f} USD`\n" \
                          f"📊 *Resultado Global:* {emoji_geral} `{lucro_total_geral:+.2f} USD` (`{variacao_total:+.2f}%`)"
             
-            enviar_telegram(relatorio)
+            # Registar dados para o histórico do gráfico
+            agora_str = datetime.datetime.now().strftime("%H:%M")
+            historico_tempos.append(agora_str)
+            historico_valores.append(valor_total_portfolio)
+            
+            # Manter apenas os últimos 24 registos para o gráfico não ficar sobrecarregado
+            if len(historico_tempos) > 24:
+                historico_tempos.pop(0)
+                historico_valores.pop(0)
+                
+            # Gerar imagem do gráfico
+            caminho_grafico = gerar_grafico(historico_tempos, historico_valores)
+            
+            # Enviar relatório com a foto para o Telegram
+            enviar_telegram_com_foto(relatorio, caminho_grafico)
+            
         except Exception as e:
             print(f"[ERRO CICLO] {e}", flush=True)
         
         print("[ROBÔ] Ciclo terminado. A aguardar 1 hora...", flush=True)
-        time.sleep(900)
+        time.sleep(3600)
 
 if __name__ == "__main__":
     main()
