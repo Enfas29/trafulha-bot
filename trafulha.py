@@ -31,12 +31,13 @@ web_thread.start()
 TOKEN = "8882501211:AAGQoteMJ86vBY-ShXYU3KjtvgsmNT07_9s"
 CHAT_ID = "-5318794924"
 
-ativos_ids = {
-    "BTC": "bitcoin",
-    "ETH": "ethereum",
-    "SOL": "solana",
-    "BNB": "binancecoin",
-    "SUI": "sui"
+# Pares na Binance para obter preços reais ao cêntimo
+ativos_binance = {
+    "BTC": "BTCUSDT",
+    "ETH": "ETHUSDT",
+    "SOL": "SOLUSDT",
+    "BNB": "BNBUSDT",
+    "SUI": "SUIUSDT"
 }
 
 # Capital alocado por ativo: BTC = 200 USD | Outros = 100 USD cada (Total = 600 USD)
@@ -63,20 +64,19 @@ def enviar_telegram_com_foto(mensagem, caminho_img):
         print(f"[ERRO TELEGRAM FOTO] {e}", flush=True)
 
 def obter_todos_os_precos():
+    precos = {}
+    headers = {'User-Agent': 'Mozilla/5.0'}
     try:
-        url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana,binancecoin,sui&vs_currencies=usd"
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-        res = requests.get(url, headers=headers, timeout=10).json()
+        for ativo, symbol in ativos_binance.items():
+            url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}"
+            res = requests.get(url, headers=headers, timeout=5).json()
+            if 'price' in res:
+                precos[ativo] = float(res['price'])
         
-        precos = {}
-        for ativo, coin_id in ativos_ids.items():
-            if coin_id in res and 'usd' in res[coin_id]:
-                precos[ativo] = float(res[coin_id]['usd'])
-        
-        if len(precos) == len(ativos_ids):
+        if len(precos) == len(ativos_binance):
             return precos
     except Exception as e:
-        print(f"[ERRO API COINGECKO] {e}", flush=True)
+        print(f"[ERRO API BINANCE] {e}", flush=True)
     
     return None
 
@@ -106,7 +106,7 @@ def main():
     while not precos_iniciais:
         precos_iniciais = obter_todos_os_precos()
         if not precos_iniciais:
-            print("[ROBÔ] A aguardar ligação à API de preços...", flush=True)
+            print("[ROBÔ] A aguardar ligação à API de preços da Binance...", flush=True)
             time.sleep(5)
             
     for ativo, investido in capital_alocado.items():
@@ -119,7 +119,7 @@ def main():
             "investido": investido
         }
     
-    print("[ROBÔ] Configuração inicial concluída.", flush=True)
+    print("[ROBÔ] Configuração inicial concluída com sucesso.", flush=True)
 
     while True:
         try:
@@ -162,7 +162,7 @@ def main():
             historico_tempos.append(agora_str)
             historico_valores.append(valor_total_portfolio)
             
-            # Manter apenas os últimos 24 registos para o gráfico não ficar sobrecarregado
+            # Manter apenas os últimos 24 registos para o gráfico
             if len(historico_tempos) > 24:
                 historico_tempos.pop(0)
                 historico_valores.pop(0)
@@ -176,7 +176,7 @@ def main():
         except Exception as e:
             print(f"[ERRO CICLO] {e}", flush=True)
         
-        print("[ROBÔ] Ciclo terminado. A aguardar 1 hora...", flush=True)
+        print("[ROBÔ] Ciclo terminado. A aguardar 900 segundos (15 minutos)...", flush=True)
         time.sleep(900)
 
 if __name__ == "__main__":
