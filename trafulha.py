@@ -57,44 +57,55 @@ capital_alocado = {
 historico_tempos = []
 historico_valores = []
 
-def enviar_telegram_com_foto(mensagem, caminho_img):
+def enviar_telegram_texto(mensagem):
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    try:
+        payload = {"chat_id": CHAT_ID, "text": mensagem, "parse_mode": "Markdown"}
+        response = requests.post(url, data=payload, timeout=15)
+        print(f"[TELEGRAM TEXTO] Resposta da API: {response.status_code}", flush=True)
+    except Exception as e:
+        print(f"[ERRO TELEGRAM TEXTO] {e}", flush=True)
+
+def enviar_telegram_foto(caminho_img):
     url = f"https://api.telegram.org/bot{TOKEN}/sendPhoto"
     try:
         with open(caminho_img, 'rb') as foto:
-            payload = {"chat_id": CHAT_ID, "caption": mensagem, "parse_mode": "Markdown"}
+            payload = {"chat_id": CHAT_ID}
             response = requests.post(url, data=payload, files={"photo": foto}, timeout=15)
             print(f"[TELEGRAM FOTO] Resposta da API: {response.status_code}", flush=True)
     except Exception as e:
         print(f"[ERRO TELEGRAM FOTO] {e}", flush=True)
 
 def obter_todos_os_precos():
-    headers = {'User-Agent': 'Mozilla/5.0'}
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
     
-    # Tentar Binance primeiro
+    # 1. Tentar Binance primeiro
     precos = {}
     try:
         for ativo, symbol in ativos_binance.items():
             url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}"
-            res = requests.get(url, headers=headers, timeout=3).json()
-            if 'price' in res:
-                precos[ativo] = float(res['price'])
+            res = requests.get(url, headers=headers, timeout=4)
+            data = res.json()
+            if 'price' in data:
+                precos[ativo] = float(data['price'])
         if len(precos) == len(ativos_binance):
             return precos
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[AVISO API BINANCE] {e}", flush=True)
 
-    # Se a Binance falhar, tentar CoinGecko em lote
+    # 2. Se a Binance falhar, tentar CoinGecko em lote
     try:
         url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana,binancecoin,sui&vs_currencies=usd"
-        res = requests.get(url, headers=headers, timeout=5).json()
+        res = requests.get(url, headers=headers, timeout=6)
+        data = res.json()
         precos_cg = {}
         for ativo, coin_id in ativos_coingecko.items():
-            if coin_id in res and 'usd' in res[coin_id]:
-                precos_cg[ativo] = float(res[coin_id]['usd'])
+            if coin_id in data and 'usd' in data[coin_id]:
+                precos_cg[ativo] = float(data[coin_id]['usd'])
         if len(precos_cg) == len(ativos_coingecko):
             return precos_cg
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[AVISO API COINGECKO] {e}", flush=True)
     
     return None
 
@@ -148,7 +159,7 @@ def main():
                 time.sleep(30)
                 continue
                 
-            relatorio = "📈 *Relatório de Portfólio com Gráfico*\n\n"
+            relatorio = "📈 *Relatório de Portfólio Trafulha*\n\n"
             valor_total_portfolio = 0
             
             for ativo, dados in portfolio.items():
@@ -183,7 +194,9 @@ def main():
                 historico_valores.pop(0)
                 
             caminho_grafico = gerar_grafico(historico_tempos, historico_valores)
-            enviar_telegram_com_foto(relatorio, caminho_grafico)
+            
+            enviar_telegram_texto(relatorio)
+            enviar_telegram_foto(caminho_grafico)
             
         except Exception as e:
             print(f"[ERRO CICLO] {e}", flush=True)
