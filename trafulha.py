@@ -23,7 +23,6 @@ def run_web():
     print(f"[WEB] A iniciar servidor Flask na porta {port}...", flush=True)
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
-# Iniciar o servidor Flask numa thread separada
 web_thread = threading.Thread(target=run_web, daemon=True)
 web_thread.start()
 
@@ -31,7 +30,6 @@ web_thread.start()
 TOKEN = "8882501211:AAGQoteMJ86vBY-ShXYU3KjtvgsmNT07_9s"
 CHAT_ID = "-5318794924"
 
-# Pares na Binance para obter preços reais ao cêntimo
 ativos_binance = {
     "BTC": "BTCUSDT",
     "ETH": "ETHUSDT",
@@ -40,7 +38,14 @@ ativos_binance = {
     "SUI": "SUIUSDT"
 }
 
-# Capital alocado por ativo: BTC = 200 USD | Outros = 100 USD cada (Total = 600 USD)
+ativos_coingecko = {
+    "BTC": "bitcoin",
+    "ETH": "ethereum",
+    "SOL": "solana",
+    "BNB": "binancecoin",
+    "SUI": "sui"
+}
+
 capital_alocado = {
     "BTC": 200.0,
     "ETH": 100.0,
@@ -49,7 +54,6 @@ capital_alocado = {
     "SUI": 100.0
 }
 
-# Histórico para o gráfico
 historico_tempos = []
 historico_valores = []
 
@@ -64,19 +68,33 @@ def enviar_telegram_com_foto(mensagem, caminho_img):
         print(f"[ERRO TELEGRAM FOTO] {e}", flush=True)
 
 def obter_todos_os_precos():
-    precos = {}
     headers = {'User-Agent': 'Mozilla/5.0'}
+    
+    # Tentar Binance primeiro
+    precos = {}
     try:
         for ativo, symbol in ativos_binance.items():
             url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}"
-            res = requests.get(url, headers=headers, timeout=5).json()
+            res = requests.get(url, headers=headers, timeout=3).json()
             if 'price' in res:
                 precos[ativo] = float(res['price'])
-        
         if len(precos) == len(ativos_binance):
             return precos
-    except Exception as e:
-        print(f"[ERRO API BINANCE] {e}", flush=True)
+    except Exception:
+        pass
+
+    # Se a Binance falhar, tentar CoinGecko em lote
+    try:
+        url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana,binancecoin,sui&vs_currencies=usd"
+        res = requests.get(url, headers=headers, timeout=5).json()
+        precos_cg = {}
+        for ativo, coin_id in ativos_coingecko.items():
+            if coin_id in res and 'usd' in res[coin_id]:
+                precos_cg[ativo] = float(res[coin_id]['usd'])
+        if len(precos_cg) == len(ativos_coingecko):
+            return precos_cg
+    except Exception:
+        pass
     
     return None
 
@@ -106,13 +124,12 @@ def main():
     while not precos_iniciais:
         precos_iniciais = obter_todos_os_precos()
         if not precos_iniciais:
-            print("[ROBÔ] A aguardar ligação à API de preços da Binance...", flush=True)
+            print("[ROBÔ] A aguardar ligação às fontes de preços...", flush=True)
             time.sleep(5)
             
     for ativo, investido in capital_alocado.items():
         preco_inicial = precos_iniciais[ativo]
         quantidade = investido / preco_inicial if preco_inicial > 0 else 0
-        
         portfolio[ativo] = {
             "preco_compra": preco_inicial,
             "quantidade": quantidade,
@@ -128,7 +145,7 @@ def main():
             
             if not precos_atuais:
                 print("[ROBÔ] Falha ao atualizar preços neste ciclo, a tentar novamente...", flush=True)
-                time.sleep(60)
+                time.sleep(30)
                 continue
                 
             relatorio = "📈 *Relatório de Portfólio com Gráfico*\n\n"
@@ -157,20 +174,15 @@ def main():
                          f"💼 *Valor Atual:* `{valor_total_portfolio:.2f} USD`\n" \
                          f"📊 *Resultado Global:* {emoji_geral} `{lucro_total_geral:+.2f} USD` (`{variacao_total:+.2f}%`)"
             
-            # Registar dados para o histórico do gráfico
             agora_str = datetime.datetime.now().strftime("%H:%M")
             historico_tempos.append(agora_str)
             historico_valores.append(valor_total_portfolio)
             
-            # Manter apenas os últimos 24 registos para o gráfico
             if len(historico_tempos) > 24:
                 historico_tempos.pop(0)
                 historico_valores.pop(0)
                 
-            # Gerar imagem do gráfico
             caminho_grafico = gerar_grafico(historico_tempos, historico_valores)
-            
-            # Enviar relatório com a foto para o Telegram
             enviar_telegram_com_foto(relatorio, caminho_grafico)
             
         except Exception as e:
