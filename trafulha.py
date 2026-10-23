@@ -8,7 +8,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from flask import Flask
 
-print("--- INICIO DO SCRIPT TRAFULHA ---", flush=True)
+print("--- INICIO DO SCRIPT TRAFULHA (HYPERLIQUID) ---", flush=True)
 
 # --- Configuração do Servidor Web (Flask para o Render) ---
 app = Flask(__name__)
@@ -16,7 +16,7 @@ app = Flask(__name__)
 @app.route('/')
 def home():
     print("[WEB] Recebido pedido HTTP no Flask!", flush=True)
-    return "Robô Trafulha a operar 24/7!"
+    return "Robô Trafulha a operar 24/7 na Hyperliquid!"
 
 def run_web():
     port = int(os.environ.get("PORT", 10000))
@@ -30,21 +30,8 @@ web_thread.start()
 TOKEN = "8882501211:AAGQoteMJ86vBY-ShXYU3KjtvgsmNT07_9s"
 CHAT_ID = "-5318794924"
 
-ativos_binance = {
-    "BTC": "BTCUSDT",
-    "ETH": "ETHUSDT",
-    "SOL": "SOLUSDT",
-    "BNB": "BNBUSDT",
-    "SUI": "SUIUSDT"
-}
-
-ativos_coingecko = {
-    "BTC": "bitcoin",
-    "ETH": "ethereum",
-    "SOL": "solana",
-    "BNB": "binancecoin",
-    "SUI": "sui"
-}
+# Ativos monitorizados
+ativos_alvo = ["BTC", "ETH", "SOL", "BNB", "SUI"]
 
 capital_alocado = {
     "BTC": 200.0,
@@ -77,42 +64,31 @@ def enviar_telegram_foto(caminho_img):
         print(f"[ERRO TELEGRAM FOTO] {e}", flush=True)
 
 def obter_todos_os_precos():
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+    url = "https://api.hyperliquid.xyz/info"
+    headers = {'Content-Type': 'application/json'}
+    payload = {"type": "allMids"}
     
-    # 1. Tentar Binance primeiro
-    precos = {}
     try:
-        for ativo, symbol in ativos_binance.items():
-            url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}"
-            res = requests.get(url, headers=headers, timeout=4)
-            data = res.json()
-            if 'price' in data:
-                precos[ativo] = float(data['price'])
-        if len(precos) == len(ativos_binance):
-            return precos
-    except Exception as e:
-        print(f"[AVISO API BINANCE] {e}", flush=True)
-
-    # 2. Se a Binance falhar, tentar CoinGecko em lote
-    try:
-        url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana,binancecoin,sui&vs_currencies=usd"
-        res = requests.get(url, headers=headers, timeout=6)
+        res = requests.post(url, json=payload, headers=headers, timeout=5)
         data = res.json()
-        precos_cg = {}
-        for ativo, coin_id in ativos_coingecko.items():
-            if coin_id in data and 'usd' in data[coin_id]:
-                precos_cg[ativo] = float(data[coin_id]['usd'])
-        if len(precos_cg) == len(ativos_coingecko):
-            return precos_cg
+        precos = {}
+        
+        for ativo in ativos_alvo:
+            if ativo in data:
+                precos[ativo] = float(data[ativo])
+                
+        if len(precos) == len(ativos_alvo):
+            return precos
+            
     except Exception as e:
-        print(f"[AVISO API COINGECKO] {e}", flush=True)
-    
+        print(f"[ERRO API HYPERLIQUID] {e}", flush=True)
+        
     return None
 
 def gerar_grafico(tempos, valores):
     plt.figure(figsize=(10, 5))
     plt.plot(tempos, valores, marker='o', color='#2ecc71', linewidth=2, markersize=6)
-    plt.title('Evolução do Portfólio Trafulha (USD)', fontsize=14, fontweight='bold', color='#2c3e50')
+    plt.title('Evolução do Portfólio Trafulha (Hyperliquid USD)', fontsize=14, fontweight='bold', color='#2c3e50')
     plt.xlabel('Hora do Registo', fontsize=11)
     plt.ylabel('Valor Total (USD)', fontsize=11)
     plt.grid(True, linestyle='--', alpha=0.6)
@@ -125,7 +101,7 @@ def gerar_grafico(tempos, valores):
     return caminho_img
 
 def main():
-    print("🚀 [ROBÔ] A iniciar a lógica principal do Trafulha...", flush=True)
+    print("🚀 [ROBÔ] A iniciar a lógica principal do Trafulha na Hyperliquid...", flush=True)
     time.sleep(3)
     
     caixa_total = sum(capital_alocado.values())
@@ -135,7 +111,7 @@ def main():
     while not precos_iniciais:
         precos_iniciais = obter_todos_os_precos()
         if not precos_iniciais:
-            print("[ROBÔ] A aguardar ligação às fontes de preços...", flush=True)
+            print("[ROBÔ] A aguardar ligação à API da Hyperliquid...", flush=True)
             time.sleep(5)
             
     for ativo, investido in capital_alocado.items():
@@ -147,7 +123,7 @@ def main():
             "investido": investido
         }
     
-    print("[ROBÔ] Configuração inicial concluída com sucesso.", flush=True)
+    print("[ROBÔ] Configuração inicial concluída com sucesso via Hyperliquid.", flush=True)
 
     while True:
         try:
@@ -159,7 +135,7 @@ def main():
                 time.sleep(30)
                 continue
                 
-            relatorio = "📈 *Relatório de Portfólio Trafulha*\n\n"
+            relatorio = "📈 *Relatório de Portfólio Trafulha (Hyperliquid)*\n\n"
             valor_total_portfolio = 0
             
             for ativo, dados in portfolio.items():
