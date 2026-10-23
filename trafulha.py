@@ -39,7 +39,7 @@ ativos_ids = {
     "SUI": "sui"
 }
 
-# Capital alocado por cada ativo (Total = 1000 USD: 200 para BTC + 200 para os outros 4)
+# Capital alocado por cada ativo (Total = 1000 USD: 200 para cada um dos 5 ativos)
 capital_alocado = {
     "BTC": 200.0,
     "ETH": 200.0,
@@ -78,7 +78,7 @@ def main():
     
     portfolio = {}
     
-    # Registar o preço de compra inicial e calcular a quantidade comprada de cada ativo
+    # Registar o preço de compra inicial e calcular a quantidade de cada ativo
     for ativo in ativos_ids.keys():
         preco_inicial = obter_preco(ativo)
         investido = capital_alocado[ativo]
@@ -91,7 +91,7 @@ def main():
         }
         print(f"[ROBÔ] {ativo} - Compra: {preco_inicial} | Qtd: {quantidade:.4f}", flush=True)
         
-    enviar_telegram("📊 Configuração inicial de portfólio concluída. A monitorizar os mercados...")
+    enviar_telegram("📊 Configuração de portfólio concluída. A monitorizar os mercados em tempo real...")
 
     while True:
         try:
@@ -110,13 +110,13 @@ def main():
                 valor_total_portfolio += valor_atual
                 
                 relatorio += f"*{ativo}*:\n" \
-                             f"• Investido: `{dados['investido']:.2f} USD`\n" \
-                             f"• Valor Atual: `{valor_atual:.2f} USD`\n" \
+                             f"• Alocado: `{dados['investido']:.2f} USD`\n" \
+                             f"• Atual: `{valor_atual:.2f} USD`\n" \
                              f"• P/L: {emoji} `{lucro_prejuizo:+.2f} USD` (`{variacao:+.2f}%`)\n\n"
             
             lucro_total_geral = valor_total_portfolio - 1000.0
             variacao_total = (lucro_total_geral / 1000.0) * 100
-             emoji_geral = "🟢" if lucro_total_geral >= 0 else "🔴"
+            emoji_geral = "🟢" if lucro_total_geral >= 0 else "🔴"
             
             relatorio += f"💼 *Total da Carteira:* `1000 USD` ➡️ `{valor_total_portfolio:.2f} USD`\n" \
                          f"📊 *Lucro/Prejuízo Global:* {emoji_geral} `{lucro_total_geral:+.2f} USD` (`{variacao_total:+.2f}%`)"
