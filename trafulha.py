@@ -1,184 +1,178 @@
 import os
 import time
-import threading
 import requests
-import datetime
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from flask import Flask
+import threading
 
-print("--- INICIO DO SCRIPT TRAFULHA (HYPERLIQUID) ---", flush=True)
-
-# --- Configuração do Servidor Web (Flask para o Render) ---
+# --- 1. SERVIDOR FLASK PARA RENDER E UPTIMEROBOT ---
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    print("[WEB] Recebido pedido HTTP no Flask!", flush=True)
-    return "Robô Trafulha a operar 24/7 na Hyperliquid!"
+    return "Trafulha Bot Principal a funcionar 24/7!", 200
 
-def run_web():
-    port = int(os.environ.get("PORT", 10000))
-    print(f"[WEB] A iniciar servidor Flask na porta {port}...", flush=True)
-    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
+def run_flask():
+    app.run(host='0.0.0.0', port=10000)
 
-web_thread = threading.Thread(target=run_web, daemon=True)
-web_thread.start()
-
-# --- Configuração do Robô de Trading ---
+# --- 2. CONFIGURAÇÕES DO ROBÔ E TELEGRAM ---
 TOKEN = "8882501211:AAGQoteMJ86vBY-ShXYU3KjtvgsmNT07_9s"
 CHAT_ID = "-5318794924"
 
-ativos_alvo = ["BTC", "ETH", "SOL", "BNB", "SUI"]
-
-capital_alocado = {
-    "BTC": 200.0,
-    "ETH": 100.0,
-    "SOL": 100.0,
-    "BNB": 100.0,
-    "SUI": 100.0
+# Carteira Spot Inicial (Investimento Teórico)
+carteira_inicial = {
+    "BTC": {"investido": 200.0, "alocacao_inicial": 200.0},
+    "ETH": {"investido": 100.0, "alocacao_inicial": 100.0},
+    "SOL": {"investido": 100.0, "alocacao_inicial": 100.0},
+    "BNB": {"investido": 100.0, "alocacao_inicial": 100.0},
+    "SUI": {"investido": 100.0, "alocacao_inicial": 100.0}
 }
 
-historico_tempos = []
-historico_valores = []
+caixa_inicial = 600.0  # Capital Total Inicial em USD
+historico_saldo = []
+pico_historico_saldo = caixa_inicial  # Registo do All-Time High em sessão
 
-def enviar_telegram_texto(mensagem):
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+def obter_precos_hyperliquid():
+    """Obtém preços da API pública da Hyperliquid."""
+    url = "https://api.hyperliquid.xyz/info"
+    headers = {"Content-Type": "application/json"}
+    payload = {"type": "allMids"}
     try:
-        payload = {"chat_id": CHAT_ID, "text": mensagem, "parse_mode": "Markdown"}
-        response = requests.post(url, data=payload, timeout=15)
-        print(f"[TELEGRAM TEXTO] Resposta da API: {response.status_code}", flush=True)
+        response = requests.post(url, json=payload, headers=headers, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            return {coin: float(data[coin]) for coin in carteira_inicial.keys() if coin in data}
+        return None
     except Exception as e:
-        print(f"[ERRO TELEGRAM TEXTO] {e}", flush=True)
+        print(f"[ERRO HYPERLIQUID] {e}")
+        return None
 
-def enviar_telegram_foto(caminho_img):
+def gerar_grafico_evolucao(historico):
+    """Gera o gráfico de evolução do portfólio."""
+    horas = [h['hora'] for h in historico[-20:]]  # Mostra as últimas 20 medições
+    valores = [h['valor'] for h in historico[-20:]]
+
+    plt.figure(figsize=(9, 4.5))
+    plt.plot(horas, valores, marker='o', color='#4CAF50', linewidth=2, markersize=5)
+    plt.title("Evolução do Portfólio Trafulha (Hyperliquid USD)", fontsize=13, fontweight='bold', pad=15)
+    plt.xlabel("Hora do Registo", fontsize=9)
+    plt.ylabel("Valor Total (USD)", fontsize=9)
+    plt.grid(True, linestyle='--', alpha=0.4)
+    plt.xticks(rotation=30, fontsize=8)
+    plt.tight_layout()
+
+    caminho = "grafico_portfolio.png"
+    plt.savefig(caminho, dpi=120)
+    plt.close()
+    return caminho
+
+def enviar_foto_telegram(caminho_imagem):
     url = f"https://api.telegram.org/bot{TOKEN}/sendPhoto"
     try:
-        with open(caminho_img, 'rb') as foto:
-            payload = {"chat_id": CHAT_ID}
-            response = requests.post(url, data=payload, files={"photo": foto}, timeout=15)
-            print(f"[TELEGRAM FOTO] Resposta da API: {response.status_code}", flush=True)
+        with open(caminho_imagem, 'rb') as photo:
+            requests.post(url, data={'chat_id': CHAT_ID}, files={'photo': photo}, timeout=15)
     except Exception as e:
-        print(f"[ERRO TELEGRAM FOTO] {e}", flush=True)
+        print(f"[ERRO TELEGRAM FOTO] {e}")
 
-def obter_todos_os_precos():
-    url = "https://api.hyperliquid.xyz/info"
-    headers = {'Content-Type': 'application/json'}
-    payload = {"type": "allMids"}
-    
+def enviar_texto_telegram(mensagem):
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    payload = {'chat_id': CHAT_ID, 'text': mensagem, 'parse_mode': 'Markdown'}
     try:
-        res = requests.post(url, json=payload, headers=headers, timeout=5)
-        data = res.json()
-        precos = {}
-        
-        for ativo in ativos_alvo:
-            if ativo in data:
-                precos[ativo] = float(data[ativo])
-                
-        if len(precos) == len(ativos_alvo):
-            return precos
-            
+        requests.post(url, json=payload, timeout=10)
     except Exception as e:
-        print(f"[ERRO API HYPERLIQUID] {e}", flush=True)
+        print(f"[ERRO TELEGRAM TEXTO] {e}")
+
+def ciclo_principal():
+    global pico_historico_saldo
+    precos = obter_precos_hyperliquid()
+    if not precos:
+        return
+
+    hora_atual = time.strftime("%H:%M")
+    valor_carteira_atual = 0.0
+    detalhes_moedas = []
+
+    # Cálculo da posição de cada moeda
+    for coin, info in carteira_inicial.items():
+        preco_atual = precos.get(coin, 0)
+        investido = info["investido"]
         
-    return None
+        # Na primeira execução guarda-se o preço base de referência
+        if "preco_entrada" not in info and preco_atual > 0:
+            info["preco_entrada"] = preco_atual
 
-def gerar_grafico(tempos, valores):
-    plt.figure(figsize=(10, 5))
-    plt.plot(tempos, valores, marker='o', color='#2ecc71', linewidth=2, markersize=6)
-    plt.title('Evolução do Portfólio Trafulha (Hyperliquid USD)', fontsize=14, fontweight='bold', color='#2c3e50')
-    plt.xlabel('Hora do Registo', fontsize=11)
-    plt.ylabel('Valor Total (USD)', fontsize=11)
-    plt.grid(True, linestyle='--', alpha=0.6)
-    plt.xticks(rotation=30)
-    plt.tight_layout()
-    
-    caminho_img = 'grafico_portfolio.png'
-    plt.savefig(caminho_img, dpi=150)
-    plt.close()
-    return caminho_img
+        preco_entrada = info.get("preco_entrada", preco_atual)
+        qtd = investido / preco_entrada if preco_entrada > 0 else 0
+        valor_atual_moeda = qtd * preco_atual
+        valor_carteira_atual += valor_atual_moeda
 
-def main():
-    print("🚀 [ROBÔ] A iniciar a lógica principal do Trafulha na Hyperliquid...", flush=True)
-    time.sleep(3)
+        pl_moeda = valor_atual_moeda - investido
+        pl_pct = (pl_moeda / investido * 100) if investido > 0 else 0
+        
+        emoji_pl = "🟢" if pl_moeda >= 0 else "🔴"
+        detalhes_moedas.append(
+            f"🔹 *{coin}*:\n"
+            f"   • Preço Atual: `${preco_atual:,.2f}`\n"
+            f"   • Investido: `${investido:,.2f}`\n"
+            f"   • Valor Atual: `${valor_atual_moeda:,.2f}`\n"
+            f"   • P/L: {emoji_pl} `${pl_moeda:+.2f}` (`{pl_pct:+.2f}%`)\n"
+        )
+
+    pl_global = valor_carteira_atual - caixa_inicial
+    pl_global_pct = (pl_global / caixa_inicial * 100)
     
-    caixa_total = sum(capital_alocado.values())
+    # Atualiza Pico Histórico (ATH)
+    if valor_carteira_atual > pico_historico_saldo:
+        pico_historico_saldo = valor_carteira_atual
+
+    # Registo para o gráfico
+    historico_saldo.append({"hora": hora_atual, "valor": valor_carteira_atual})
+
+    # 1. Enviar Gráficos de Evolução
+    caminho_foto = gerar_grafico_evolucao(historico_saldo)
+    enviar_foto_telegram(caminho_foto)
+    if os.path.exists(caminho_foto):
+        os.remove(caminho_foto)
+
+    # 2. Avaliação de Estado e Alerta de Risco
+    if pl_global_pct >= 1.0:
+        estado_mercado = "🟢 *ESTADO: MERCADO SAUDÁVEL / GANHO*"
+    elif pl_global_pct >= -1.5:
+        estado_mercado = "🟡 *ESTADO: MERCADO LATERAL / ATENÇÃO*"
+    else:
+        estado_mercado = "🔴 *ESTADO: ALERTA DE QUEDA / PROTEÇÃO DE CAPITAL*"
+
+    # 3. Construção do Relatório
+    msg = f"📈 *RELATÓRIO DE PORTFÓLIO TRAFULHA*\n"
+    msg += f"{estado_mercado}\n"
+    msg += "-----------------------------------------\n\n"
     
-    portfolio = {}
-    precos_iniciais = None
-    while not precos_iniciais:
-        precos_iniciais = obter_todos_os_precos()
-        if not precos_iniciais:
-            print("[ROBÔ] A aguardar ligação à API da Hyperliquid...", flush=True)
-            time.sleep(5)
-            
-    for ativo, investido in capital_alocado.items():
-        preco_inicial = precos_iniciais[ativo]
-        quantidade = investido / preco_inicial if preco_inicial > 0 else 0
-        portfolio[ativo] = {
-            "preco_compra": preco_inicial,
-            "quantidade": quantidade,
-            "investido": investido
-        }
+    msg += "\n".join(detalhes_moedas) + "\n"
+    msg += "-----------------------------------------\n"
+    msg += f"💼 *Caixa Inicial:* `${caixa_inicial:,.2f}` USD\n"
+    msg += f"💼 *Valor Atual:* `${valor_carteira_atual:,.2f}` USD\n"
     
-    print("[ROBÔ] Configuração inicial concluída com sucesso via Hyperliquid.", flush=True)
+    emoji_global = "🟢" if pl_global >= 0 else "🔴"
+    msg += f"📊 *Resultado Global:* {emoji_global} `${pl_global:+.2f}` USD (`{pl_global_pct:+.2f}%`)\n"
+    msg += f"🏆 *Pico Máximo Atingido:* `${pico_historico_saldo:,.2f}` USD\n\n"
+
+    # Alerta especial se o prejuízo for significativo
+    if pl_global_pct <= -2.0:
+        msg += "🚨 *AVISO DE RISCO:* A carteira está exposta a uma queda superior a -2.0%. Considerar acionar a Caixa de Proteção.\n\n"
+
+    msg += "⏳ Próxima atualização em 15 minutos."
+
+    enviar_texto_telegram(msg)
+
+# --- 3. PONTO DE ENTRADA ---
+if __name__ == "__main__":
+    print("--- INICIANDO ROBÔ PRINCIPAL PORTFÓLIO TRAFULHA ---")
+    t = threading.Thread(target=run_flask)
+    t.daemon = True
+    t.start()
 
     while True:
-        try:
-            print("[ROBÔ] A executar ciclo de verificação de preços...", flush=True)
-            precos_atuais = obter_todos_os_precos()
-            
-            if not precos_atuais:
-                print("[ROBÔ] Falha ao atualizar preços neste ciclo, a tentar novamente...", flush=True)
-                time.sleep(30)
-                continue
-                
-            relatorio = "📈 *Relatório de Portfólio Trafulha (Hyperliquid)*\n\n"
-            valor_total_portfolio = 0
-            
-            for ativo, dados in portfolio.items():
-                preco_atual = precos_atuais.get(ativo, dados["preco_compra"])
-                valor_atual = dados["quantidade"] * preco_atual
-                lucro_prejuizo = valor_atual - dados["investido"]
-                variacao = (lucro_prejuizo / dados["investido"]) * 100 if dados["investido"] > 0 else 0
-                emoji = "🟢" if lucro_prejuizo >= 0 else "🔴"
-                
-                valor_total_portfolio += valor_atual
-                
-                relatorio += f"*{ativo}*:\n" \
-                             f"• Preço Atual: `{preco_atual:.2f} USD`\n" \
-                             f"• Investido: `{dados['investido']:.2f} USD`\n" \
-                             f"• Valor Atual: `{valor_atual:.2f} USD`\n" \
-                             f"• P/L: {emoji} `{lucro_prejuizo:+.2f} USD` (`{variacao:+.2f}%`)\n\n"
-            
-            lucro_total_geral = valor_total_portfolio - caixa_total
-            variacao_total = (lucro_total_geral / caixa_total) * 100
-            emoji_geral = "🟢" if lucro_total_geral >= 0 else "🔴"
-            
-            relatorio += f"💼 *Caixa Inicial:* `{caixa_total:.2f} USD`\n" \
-                         f"💼 *Valor Atual:* `{valor_total_portfolio:.2f} USD`\n" \
-                         f"📊 *Resultado Global:* {emoji_geral} `{lucro_total_geral:+.2f} USD` (`{variacao_total:+.2f}%`)"
-            
-            agora_str = datetime.datetime.now().strftime("%H:%M")
-            historico_tempos.append(agora_str)
-            historico_valores.append(valor_total_portfolio)
-            
-            if len(historico_tempos) > 24:
-                historico_tempos.pop(0)
-                historico_valores.pop(0)
-                
-            caminho_grafico = gerar_grafico(historico_tempos, historico_valores)
-            
-            # ORDEM ALTERADA: Envia primeiro a foto do gráfico e só depois o texto do relatório
-            enviar_telegram_foto(caminho_grafico)
-            enviar_telegram_texto(relatorio)
-            
-        except Exception as e:
-            print(f"[ERRO CICLO] {e}", flush=True)
-        
-        print("[ROBÔ] Ciclo terminado. A aguardar 900 segundos (15 minutos)...", flush=True)
+        ciclo_principal()
         time.sleep(900)
-
-if __name__ == "__main__":
-    main()
