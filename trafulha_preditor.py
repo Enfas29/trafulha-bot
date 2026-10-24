@@ -45,7 +45,7 @@ def obter_precos_hyperliquid():
 def calcular_rsi(precos, periodo=14):
     """Calcula o RSI (Relative Strength Index)."""
     if len(precos) < periodo + 1:
-        return 50.0  # Valor neutro por defeito se não houver dados suficientes
+        return 50.0  # Valor neutro por defeito
     
     deltas = np.diff(precos)
     gains = np.where(deltas > 0, deltas, 0)
@@ -69,7 +69,7 @@ def calcular_smas(precos):
     return round(sma_curta, 2), round(sma_longa, 2)
 
 def gerar_grafico(precos_atuais):
-    """Gera o gráfico visual azul com os preços atuais."""
+    """Gera o gráfico visual azul com os preços atuais para o Preditor."""
     moedas = list(precos_atuais.keys())
     valores = list(precos_atuais.values())
 
@@ -112,19 +112,19 @@ def ciclo_principal():
     if not precos:
         return
 
-    # Guarda histórico de até 100 ciclos para cálculo técnico
+    # Guarda histórico para cálculo técnico e gráficos
     for coin, preco in precos.items():
         historico_precos[coin].append(preco)
         if len(historico_precos[coin]) > 100:
             historico_precos[coin].pop(0)
 
-    # 1. Enviar foto
+    # 1. Gerar e Enviar a Foto do Gráfico Azul
     caminho_foto = gerar_grafico(precos)
     enviar_foto_telegram(caminho_foto)
     if os.path.exists(caminho_foto):
         os.remove(caminho_foto)
 
-    # 2. Processar Análise Técnica
+    # 2. Processar Análise Técnica e Enviar Texto
     msg = "🔮 *TRAFULHA PREDITOR - ANÁLISE QUANTITATIVA*\n"
     msg += "Indicadores: RSI (14) | SMA (5 vs 15)\n"
     msg += "-----------------------------------------\n\n"
@@ -136,7 +136,7 @@ def ciclo_principal():
         rsi = calcular_rsi(dados)
         sma_curta, sma_longa = calcular_smas(dados)
 
-        # Determinação do Sinal
+        # Determinação do Sinal Baseado em Indicadores Reais
         if rsi < 35 or (sma_curta and sma_longa and sma_curta > sma_longa):
             sinal = "🟢 *COMPRA / ACUMULAR* (Oportunidade)"
         elif rsi > 70 or (sma_curta and sma_longa and sma_curta < sma_longa):
@@ -154,7 +154,7 @@ def ciclo_principal():
 
 # --- 3. PONTO DE ENTRADA ---
 if __name__ == "__main__":
-    print("--- INICIANDO TRAFULHA PREDITOR COMPLETO ---")
+    print("--- INICIANDO TRAFULHA PREDITOR COMPLETO COM GRÁFICO ---")
     t = threading.Thread(target=run_flask)
     t.daemon = True
     t.start()
