@@ -8,23 +8,38 @@ import matplotlib.pyplot as plt
 from flask import Flask
 import threading
 
+# Importações da Hyperliquid SDK para ordens reais
+from hyperliquid.exchange import Exchange
+from hyperliquid.info import Info
+from hyperliquid.utils import constants
+import eth_account
+
 # --- 1. SERVIDOR FLASK PARA RENDER E UPTIMEROBOT ---
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Trafulha Preditor Completo a funcionar 24/7!", 200
+    return "Trafulha Preditor & Execução Automática a funcionar 24/7!", 200
 
 def run_flask():
     app.run(host='0.0.0.0', port=10000)
 
-# --- 2. CONFIGURAÇÕES DO ROBÔ E TELEGRAM ---
+# --- 2. CONFIGURAÇÕES E CREDENCIAIS ---
 TOKEN = "8882501211:AAGQoteMJ86vBY-ShXYU3KjtvgsmNT07_9s"
 CHAT_ID = "-5318794924"
 
-ativos_alvo = ["BTC", "ETH", "SOL", "BNB", "SUI"]
+# Ligação à Hyperliquid (Mainnet)
+base_url = constants.MAINNET_API_URL
+private_key = os.getenv("HYPERLIQUID_PRIVATE_KEY")
+account = eth_account.Account.from_key(private_key) if private_key else None
 
-# Histórico em memória para calcular indicadores técnicos
+info = Info(base_url, skip_ws=True)
+exchange = Exchange(account, base_url, account_address=account.address) if account else None
+
+ativos_alvo = ["BTC", "ETH", "SOL", "BNB"]
+ALAVANCAGEM = 2  # Alavancagem moderada de 2x
+MONTE_POR_ORDEM_USD = 50.0  # Capital alocado por cada ordem automática
+
 historico_precos = {coin: [] for coin in ativos_alvo}
 
 def obter_precos_hyperliquid():
@@ -45,38 +60,58 @@ def obter_precos_hyperliquid():
 def calcular_rsi(precos, periodo=14):
     """Calcula o RSI (Relative Strength Index)."""
     if len(precos) < periodo + 1:
-        return 50.0  # Valor neutro por defeito
-    
+        return 50.0
     deltas = np.diff(precos)
     gains = np.where(deltas > 0, deltas, 0)
     losses = np.where(deltas < 0, -deltas, 0)
-    
     avg_gain = np.mean(gains[-periodo:])
     avg_loss = np.mean(losses[-periodo:])
-    
     if avg_loss == 0:
         return 100.0
-    
     rs = avg_gain / avg_loss
     return round(100 - (100 / (1 + rs)), 2)
 
 def calcular_smas(precos):
-    """Calcula as Médias Móveis Simples (SMA 5 vs SMA 15 para ciclos curtos)."""
+    """Calcula as Médias Móveis Simples."""
     if len(precos) < 15:
         return None, None
     sma_curta = np.mean(precos[-5:])
     sma_longa = np.mean(precos[-15:])
     return round(sma_curta, 2), round(sma_longa, 2)
 
+def executar_ordem_real(coin, is_buy):
+    """Envia ordens reais para a Hyperliquid se a chave privada estiver ativa."""
+    if not exchange:
+        print(f"[MODO SIMULAÇÃO] Chave privada não detetada. Ordem para {coin} não enviada à exchange.")
+        return False
+
+    try:
+        # Define alavancagem cruzada de 2x
+        exchange.update_leverage(coin, ALAVANCAGEM, is_cross=True)
+        
+        mids = info.all_mids()
+        if coin not in mids:
+            return False
+        preco_atual = float(mids[coin])
+        
+        # Calcula quantidade com base na alavancagem
+        quantidade = round((MONTE_POR_ORDEM_USD * ALAVANCAGEM) / preco_atual, 4)
+        
+        # Envia ordem de mercado
+        order_result = exchange.market_open(coin, is_buy, quantidade)
+        print(f"[SUCESSO ORDEM] {coin} {'COMPRA' if is_buy else 'VENDA'} executada: {order_result}")
+        return True
+    except Exception as e:
+        print(f"[ERRO EXECUÇÃO] {e}")
+        return False
+
 def gerar_grafico(precos_atuais):
-    """Gera o gráfico visual azul com os preços atuais para o Preditor."""
     moedas = list(precos_atuais.keys())
     valores = list(precos_atuais.values())
 
     plt.figure(figsize=(9, 4.5))
     bars = plt.bar(moedas, valores, color='#2196F3', edgecolor='#0D47A1', alpha=0.85)
-
-    plt.title("Trafulha Preditor - Análise Quantitativa", fontsize=13, fontweight='bold', pad=15)
+    plt.title("Trafulha Preditor - Execução Automática 2x", fontsize=13, fontweight='bold', pad=15)
     plt.ylabel("Preço (USD)", fontsize=10)
     plt.grid(axis='y', linestyle='--', alpha=0.4)
 
@@ -112,21 +147,19 @@ def ciclo_principal():
     if not precos:
         return
 
-    # Guarda histórico para cálculo técnico e gráficos
     for coin, preco in precos.items():
         historico_precos[coin].append(preco)
         if len(historico_precos[coin]) > 100:
             historico_precos[coin].pop(0)
 
-    # 1. Gerar e Enviar a Foto do Gráfico Azul
+    # Enviar Gráfico
     caminho_foto = gerar_grafico(precos)
     enviar_foto_telegram(caminho_foto)
     if os.path.exists(caminho_foto):
         os.remove(caminho_foto)
 
-    # 2. Processar Análise Técnica e Enviar Texto
-    msg = "🔮 *TRAFULHA PREDITOR - ANÁLISE QUANTITATIVA*\n"
-    msg += "Indicadores: RSI (14) | SMA (5 vs 15)\n"
+    msg = "🔮 *TRAFULHA PREDITOR - TRADING AUTOMÁTICO*\n"
+    msg += f"Alavancagem: `{ALAVANCAGEM}x` | Modo Execução Real\n"
     msg += "-----------------------------------------\n\n"
 
     for coin in ativos_alvo:
@@ -136,25 +169,26 @@ def ciclo_principal():
         rsi = calcular_rsi(dados)
         sma_curta, sma_longa = calcular_smas(dados)
 
-        # Determinação do Sinal Baseado em Indicadores Reais
+        # Regra de Decisão Automática
         if rsi < 35 or (sma_curta and sma_longa and sma_curta > sma_longa):
-            sinal = "🟢 *COMPRA / ACUMULAR* (Oportunidade)"
+            sinal = "🟢 *COMPRA / ACUMULAR*"
+            executar_ordem_real(coin, is_buy=True)
         elif rsi > 70 or (sma_curta and sma_longa and sma_curta < sma_longa):
-            sinal = "🔴 *VENDA / CAIXA* (Proteger Lucro / Stop)"
+            sinal = "🔴 *VENDA / CAIXA*"
+            executar_ordem_real(coin, is_buy=False)
         else:
             sinal = "🟡 *NEUTRO / MANTER*"
 
         msg += f"🔹 *{coin}*: ${preco_atual:,.2f}\n"
-        msg += f"   └ RSI: `{rsi}` | Sinal: {sinal}\n\n"
+        msg += f"   └ RSI: `{rsi}` | Ação: {sinal}\n\n"
 
     msg += "-----------------------------------------\n"
-    msg += "⏳ Próxima análise em 15 minutos."
+    msg += "⏳ Próxima análise e verificação em 15 minutos."
 
     enviar_texto_telegram(msg)
 
-# --- 3. PONTO DE ENTRADA ---
 if __name__ == "__main__":
-    print("--- INICIANDO TRAFULHA PREDITOR COMPLETO COM GRÁFICO ---")
+    print("--- INICIANDO TRADING AUTOMÁTICO NA HYPERLIQUID ---")
     t = threading.Thread(target=run_flask)
     t.daemon = True
     t.start()
