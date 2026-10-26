@@ -36,7 +36,7 @@ account = eth_account.Account.from_key(private_key) if private_key else None
 info = Info(base_url, skip_ws=True)
 exchange = Exchange(account, base_url, account_address=account.address) if account else None
 
-ativos_alvo = ["BTC", "ETH", "SOL", "BNB"]
+ativos_alvo = ["BTC", "BNB", "SOL"]
 ALAVANCAGEM = 2  # Alavancagem moderada de 2x
 MONTE_POR_ORDEM_USD = 50.0  # Capital alocado por cada ordem automática
 
