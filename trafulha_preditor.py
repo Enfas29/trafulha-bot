@@ -37,13 +37,15 @@ HYPERLIQUID_PRIVATE_KEY = os.getenv("HYPERLIQUID_PRIVATE_KEY")
 def enviar_telegram(mensagem):
     """Envia relatórios automáticos para o canal do Telegram."""
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        print("❌ Erro: Variáveis do Telegram em falta no ambiente.")
         return
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
         payload = {"chat_id": TELEGRAM_CHAT_ID, "text": mensagem, "parse_mode": "Markdown"}
-        requests.post(url, json=payload, timeout=10)
+        resposta = requests.post(url, json=payload, timeout=10)
+        print(f"📡 Resposta do Telegram: {resposta.status_code} - {resposta.text}")
     except Exception as e:
-        print(f"Erro ao enviar mensagem para o Telegram: {e}")
+        print(f"❌ Erro ao enviar mensagem para o Telegram: {e}")
 
 
 # ==========================================
@@ -56,7 +58,7 @@ ATIVOS_ALVO = {
 }
 
 def consultar_densidade_orderbook(coin):
-    """Exemplo de consulta ao l2Book da Hyperliquid para análise de densidade."""
+    """Consulta o l2Book da Hyperliquid para análise de densidade."""
     try:
         url = "https://api.hyperliquid.xyz/info"
         headers = {"Content-Type": "application/json"}
@@ -64,7 +66,6 @@ def consultar_densidade_orderbook(coin):
         response = requests.post(url, json=data, headers=headers, timeout=10)
         if response.status_code == 200:
             book = response.json()
-            # Processamento básico de bids/asks (densidade)
             levels = book.get("levels", [[], []])
             bids = levels[0] if len(levels) > 0 else []
             asks = levels[1] if len(levels) > 1 else []
@@ -78,7 +79,9 @@ def consultar_densidade_orderbook(coin):
     return None
 
 print("🤖 Robô Trafulha iniciado com sucesso focado no Trio Vencedor e Orderbook!")
-enviar_telegram("🚀 *Trafulha Online!*\nRobô arrancado com sucesso, focado estritamente no trio vencedor (`BTC`, `BNB`, `SOL`).")
+
+# Força o envio de uma mensagem de teste logo no arranque para validar o Telegram
+enviar_telegram("🚀 *Trafulha Online!*\nRobô arrancado com sucesso e ligado ao trio vencedor (`BTC`, `BNB`, `SOL`).")
 
 # Loop principal do robô de trading
 while True:
