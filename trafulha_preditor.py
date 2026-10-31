@@ -25,9 +25,9 @@ def iniciar_servidor_web():
 # ==========================================
 # 2. CONFIGURAÇÕES E CREDENCIAIS
 # ==========================================
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8882501211:AAGQoteMJ86vBY-ShXYU3KjtvgsmNT07_9s")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "5670307735")
-HYPERLIQUID_PRIVATE_KEY = os.getenv("0xB7D774BC0Bf03Bf4E5B7F20800162021e5b29287")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+HYPERLIQUID_PRIVATE_KEY = os.getenv("HYPERLIQUID_PRIVATE_KEY")
 
 # Trio vencedor absoluto - Exclusão total de ETH, SUI e ativos fora da estratégia
 ATIVOS_ALVO = {
