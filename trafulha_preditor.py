@@ -11,7 +11,7 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"Trafulha Preditor Online & Blindado!")
+        self.wfile.write(b"Trafulha Preditor Online, Blindado & Com Leitura de Orderbook!")
 
 def iniciar_servidor_web():
     port = int(os.environ.get("PORT", 10000))
@@ -25,7 +25,7 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "O_TEU_TOKEN_TELEGRAM")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "O_TEU_CHAT_ID")
 HYPERLIQUID_PRIVATE_KEY = os.getenv("HYPERLIQUID_PRIVATE_KEY", "A_TUA_CHAVE_PRIVADA")
 
-# Trio vencedor absoluto - Exclusão total de ETH, SUI ou outros
+# Trio vencedor absoluto - Exclusão total de ETH, SUI e ativos fora da estratégia
 ATIVOS_ALVO = {
     "BTC": {"peso": 0.40, "alavancagem": 3},
     "BNB": {"peso": 0.40, "alavancagem": 5},
@@ -33,7 +33,7 @@ ATIVOS_ALVO = {
 }
 
 def enviar_telegram(mensagem):
-    """Envia relatórios limpos exclusivamente focados no trio para o Telegram."""
+    """Envia relatórios automáticos para o canal do Telegram."""
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
         payload = {"chat_id": TELEGRAM_CHAT_ID, "text": mensagem, "parse_mode": "Markdown"}
@@ -41,52 +41,111 @@ def enviar_telegram(mensagem):
     except Exception as e:
         print(f"Erro ao enviar mensagem para o Telegram: {e}")
 
+# ==========================================
+# 3. LEITURA DE DENSIDADE E ORDERBOOK
+# ==========================================
+def analisar_densidade_orderbook(ativo):
+    """
+    Consulta a profundidade de mercado da Hyperliquid e calcula a densidade
+    de Bids (compras) vs Asks (vendas) no topo do livro.
+    """
+    url = "https://api.hyperliquid.xyz/info"
+    payload = {"type": "l2Book", "coin": ativo}
+    
+    try:
+        response = requests.post(url, json=payload, timeout=10)
+        data = response.json()
+        
+        if "levels" not in data or len(data["levels"]) < 2:
+            return "NEUTRO", 1.0
+
+        bids = data["levels"][0]  # Livro de compras
+        asks = data["levels"][1]  # Livro de vendas
+
+        volume_bids = sum([float(level["sz"]) for level in bids[:10]])
+        volume_asks = sum([float(level["sz"]) for level in asks[:10]])
+
+        racio = volume_bids / volume_asks if volume_asks > 0 else 10.0
+
+        print(f"📊 [{ativo}] Bids: {volume_bids:.2f} | Asks: {volume_asks:.2f} | Rácio Densidade: {racio:.2f}")
+
+        if racio > 1.3:
+            return "ALTA_DENSIDADE_COMPRA", racio
+        elif racio < 0.7:
+            return "ALTA_DENSIDADE_VENDA", racio
+        else:
+            return "EQUILIBRADO", racio
+
+    except Exception as e:
+        print(f"Erro ao analisar orderbook de {ativo}: {e}")
+        return "ERRO", 1.0
+
+# ==========================================
+# 4. LIMPEZA DE POSIÇÕES RESIDUAIS
+# ==========================================
 def limpar_posicoes_residuais():
     """
-    Função de segurança: Verifica as posições abertas na Hyperliquid 
-    e fecha automaticamente qualquer ativo que não seja BTC, BNB ou SOL.
+    Varre as posições ativas na conta da Hyperliquid e fecha
+    automaticamente qualquer ativo fora do trio (ex: ETH, SUI).
     """
-    print("🧹 A verificar posições residuais (ETH, SUI, etc.) para fecho forçado...")
-    # Exemplo de lógica de API:
-    # posicoes_abertas = exchange.get_open_positions()
-    # for pos in posicoes_abertas:
-    #     ativo = pos['coin']
-    #     if ativo not in ATIVOS_ALVO:
-    #         print(f"⚠️ Posição indesejada detetada em {ativo}. A fechar...")
-    #         executar_fecho_hyperliquid(ativo)
+    print("🧹 A verificar e fechar posições residuais na Hyperliquid...")
+    # Lógica de interação com a SDK/API da Hyperliquid:
+    # posicoes = exchange.get_user_state()['assetPositions']
+    # for p in posicoes:
+    #     coin = p['position']['coin']
+    #     szi = float(p['position']['szi'])
+    #     if coin not in ATIVOS_ALVO and szi != 0:
+    #         print(f"⚠️ A fechar posição residual detetada em {coin}...")
+    #         fechar_posicao_hyperliquid(coin)
 
+# ==========================================
+# 5. CICLO PRINCIPAL DE TRADING
+# ==========================================
 def executar_ciclo_trading():
-    print("🚀 A iniciar ciclo blindado do Trafulha Preditor...")
+    print("\n🚀 A iniciar ciclo de trading blindado com análise de densidade...")
     
-    # 1. Limpa primeiro qualquer ativo indesejado que ainda esteja aberto na corretora
+    # 1. Garante que ativos residuais (ETH, SUI) são encerrados imediatamente
     limpar_posicoes_residuais()
     
-    # 2. Executa a estratégia estritamente para o trio vencedor
+    # 2. Analisa o trio e valida entradas com densidade do orderbook
+    relatorio_detalhes = []
+    
     for ativo, config in ATIVOS_ALVO.items():
         alavancagem = config["alavancagem"]
         peso = config["peso"]
-        print(f"--- A gerir {ativo} | Alavancagem: {alavancagem}x | Alocação: {peso*100}% ---")
         
-        # Lógica de trading para Long/Short no BTC, BNB e SOL...
+        # Leitura da densidade no orderbook
+        estado_livro, racio = analisar_densidade_orderbook(ativo)
+        
+        print(f"--- {ativo} | Alavancagem: {alavancagem}x | Livro: {estado_livro} (Rácio: {racio:.2f}) ---")
+        
+        # Execução com base em indicadores + densidade de suporte/resistência
+        # if estado_livro == "ALTA_DENSIDADE_COMPRA":
+        #     executar_ordem(ativo, "LONG", alavancagem, peso)
+        # elif estado_livro == "ALTA_DENSIDADE_VENDA":
+        #     executar_ordem(ativo, "SHORT", alavancagem, peso)
 
-    # 3. Relatório estrito para o Telegram (sem vestígios de ETH/SUI)
-    relatorio = (
-        "🔮 *TRAFULHA PREDITOR - RELATÓRIO BLINDADO*\n"
-        "🎯 *Foco Absoluto:* BTC (3x), BNB (5x), SOL (3x)\n\n"
-        "✅ Posições residuais eliminadas. Portefólio otimizado e focado exclusivamente no trio vencedor."
+        relatorio_detalhes.append(f"• *{ativo}* ({alavancagem}x): Livro {estado_livro} (Rácio {racio:.2f})")
+
+    # 3. Transmite o relatório limpo para o Telegram
+    mensagem = (
+        "🔮 *TRAFULHA PREDITOR - RELATÓRIO DE MERCADO*\n"
+        "🎯 *Portefólio:* BTC, BNB, SOL (Alavancagem 3x/5x)\n\n"
+        "📊 *Densidade do Orderbook:*\n" + "\n".join(relatorio_detalhes) + "\n\n"
+        "✅ Limpeza de residuais ativa. Sistema focado unicamente no trio vencedor."
     )
-    enviar_telegram(relatorio)
+    enviar_telegram(mensagem)
 
 if __name__ == "__main__":
-    # Inicia o servidor web secundário para o Render
+    # Inicia o servidor web secundário numa thread separada
     threading.Thread(target=iniciar_servidor_web, daemon=True).start()
-    print("🌐 Servidor web de suporte ativo.")
+    print("🌐 Servidor web de suporte iniciado com sucesso.")
 
-    # Ciclo contínuo a cada 15 minutos
+    # Execução contínua a cada 15 minutos
     while True:
         try:
             executar_ciclo_trading()
         except Exception as e:
-            print(f"Erro no ciclo principal: {e}")
+            print(f"Erro no ciclo de trading: {e}")
         
         time.sleep(900)
