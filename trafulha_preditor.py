@@ -13,6 +13,10 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b"Trafulha Preditor Online, Blindado & Com Leitura de Orderbook!")
 
+    def do_HEAD(self):
+        self.send_response(200)
+        self.end_headers()
+
 def iniciar_servidor_web():
     port = int(os.environ.get("PORT", 10000))
     server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
