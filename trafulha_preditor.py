@@ -11,7 +11,7 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"Trafulha Paper Trading Online - 10k Simulados!")
+        self.wfile.write(b"Trafulha Paper Trading Dinamico Online!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -47,10 +47,20 @@ def enviar_telegram(mensagem):
 
 
 # ==========================================
-# 3. PREÇOS REAIS + CARTEIRA SIMULADA (10.000$)
+# 3. MOTOR DE PAPER TRADING DINÂMICO ($10,000)
 # ==========================================
+# Variáveis de estado global para a simulação
+ESTADO_SIMULACAO = {
+    "inicializada": False,
+    "caixa": 5000.0,          # $5,000 em dinheiro livre
+    "btc_tamanho": 0.0,
+    "btc_preco_entrada": 0.0,
+    "eth_tamanho": 0.0,
+    "eth_preco_entrada": 0.0
+}
+
 def obter_precos_mercado():
-    """Obtém os preços em tempo real de BTC e ETH da Hyperliquid real."""
+    """Obtém os preços em tempo real de BTC e ETH da Hyperliquid."""
     precos = {"BTC": 0.0, "ETH": 0.0}
     try:
         url = "https://api.hyperliquid.xyz/info"
@@ -70,44 +80,66 @@ def obter_precos_mercado():
     return precos
 
 def gerar_relatorio_paper_trading():
-    """Simula uma carteira de 10.000$ com base nos preços reais de mercado."""
+    global ESTADO_SIMULACAO
+    
     precos = obter_precos_mercado()
     btc_preco = precos.get("BTC", 0.0)
     eth_preco = precos.get("ETH", 0.0)
     
-    # Simulação de Paper Trading (Capital Inicial: $10,000.00)
-    capital_inicial = 10000.00
-    lucro_total = 142.50  # Exemplo de PnL acumulado na simulação
-    patrimonio = capital_inicial + lucro_total
-    saldo_caixa = 4500.00  # Dinheiro livre em caixa
-    total_ntl_pos = 5642.50 # Alocado em posições
+    if btc_preco == 0.0 or eth_preco == 0.0:
+        return "⚠️ Erro ao obter preços de mercado da Hyperliquid para a simulação."
+
+    # Inicializa as posições virtuais na primeira execução com os preços reais do momento
+    if not ESTADO_SIMULACAO["inicializada"]:
+        # Aloca $2,500 em BTC e $2,500 em ETH aos preços atuais
+        ESTADO_SIMULACAO["btc_tamanho"] = 2500.0 / btc_preco
+        ESTADO_SIMULACAO["btc_preco_entrada"] = btc_preco
+        
+        ESTADO_SIMULACAO["eth_tamanho"] = 2500.0 / eth_preco
+        ESTADO_SIMULACAO["eth_preco_entrada"] = eth_preco
+        
+        ESTADO_SIMULACAO["inicializada"] = True
+
+    # Cálculos dinâmicos em tempo real com base nos preços atuais do mercado
+    btc_valor_atual = ESTADO_SIMULACAO["btc_tamanho"] * btc_preco
+    btc_pnl = ESTADO_SIMULACAO["btc_tamanho"] * (btc_preco - ESTADO_SIMULACAO["btc_preco_entrada"])
+
+    eth_valor_atual = ESTADO_SIMULACAO["eth_tamanho"] * eth_preco
+    eth_pnl = ESTADO_SIMULACAO["eth_tamanho"] * (eth_preco - ESTADO_SIMULACAO["eth_preco_entrada"])
+
+    lucro_total = btc_pnl + eth_pnl
+    total_ntl_pos = btc_valor_atual + eth_valor_atual
+    patrimonio = ESTADO_SIMULACAO["caixa"] + total_ntl_pos
     
+    # Indicador visual de lucro ou prejuízo
+    emoji_pnl = "🟢" if lucro_total >= 0 else "🔴"
+
     posicoes_detalhe = (
-        f"• `BTC`: Tamanho +0.03 | PnL: `$ +95.00`\n"
-        f"• `ETH`: Tamanho +0.80 | PnL: `$ +47.50`\n"
+        f"• `BTC`: Tam: {ESTADO_SIMULACAO['btc_tamanho']:.4f} | Entr: `$ {ESTADO_SIMULACAO['btc_preco_entrada']:,.2f}` | PnL: `$ {btc_pnl:,.2f}`\n"
+        f"• `ETH`: Tam: {ESTADO_SIMULACAO['eth_tamanho']:.4f} | Entr: `$ {ESTADO_SIMULACAO['eth_preco_entrada']:,.2f}` | PnL: `$ {eth_pnl:,.2f}`\n"
     )
 
     relatorio = (
-        f"📊 *Relatório Paper Trading ($10,000) — Trafulha*\n\n"
+        f"📊 *Paper Trading Dinâmico ($10k Inicial) — Trafulha*\n\n"
         f"🪙 *Preços de Mercado (Tempo Real)*\n"
         f"• **BTC**: `$ {btc_preco:,.2f}`\n"
         f"• **ETH**: `$ {eth_preco:,.2f}`\n\n"
         f"💰 *Métricas da Carteira Virtual*\n"
         f"• **Património Atual (Equity)**: `$ {patrimonio:,.2f}`\n"
-        f"• **Saldo em Caixa (Withdrawable)**: `$ {saldo_caixa:,.2f}`\n"
-        f"• **Total na Conta / Alocado**: `$ {total_ntl_pos:,.2f}`\n"
-        f"• **Lucro / Prejuízo Acumulado (PnL)**: `$ {lucro_total:,.2f}` 🟢\n\n"
+        f"• **Saldo em Caixa (Withdrawable)**: `$ {ESTADO_SIMULACAO['caixa']:,.2f}`\n"
+        f"• **Total Alocado em Posições**: `$ {total_ntl_pos:,.2f}`\n"
+        f"• **Lucro / Prejuízo Acumulado (PnL)**: `$ {lucro_total:,.2f}` {emoji_pnl}\n\n"
         f"📈 *Posições Ativas (Simuladas)*:\n"
         f"{posicoes_detalhe}"
     )
     return relatorio
 
 
-print("🤖 Robô Trafulha iniciado em Modo Paper Trading ($10,000)!")
+print("🤖 Robô Trafulha iniciado em Modo Paper Trading Dinâmico ($10,000)!")
 mensagem_inicial = gerar_relatorio_paper_trading()
 enviar_telegram(mensagem_inicial)
 
-# Loop periódico a cada 1 hora para enviar atualizações da simulação
+# Loop periódico: atualiza o PnL e envia relatórios a cada 1 hora
 while True:
     time.sleep(3600)  
     relatorio_periodico = gerar_relatorio_paper_trading()
