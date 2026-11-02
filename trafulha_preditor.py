@@ -12,7 +12,7 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"Trafulha Preditor Online, Blindado & Finance Report Ativo!")
+        self.wfile.write(b"Trafulha Preditor Online - Modo Testnet Ativo!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -23,19 +23,20 @@ def iniciar_servidor_web():
     server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
     server.serve_forever()
 
-# Inicia o servidor web numa thread separada para manter o Render acordado
 t_web = threading.Thread(target=iniciar_servidor_web, daemon=True)
 t_web.start()
 
 
 # ==========================================
-# 2. CONFIGURAÇÕES E CREDENCIAIS (Seguras via Render)
+# 2. CONFIGURAÇÕES E CREDENCIAIS (Testnet)
 # ==========================================
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 HYPERLIQUID_PRIVATE_KEY = os.getenv("HYPERLIQUID_PRIVATE_KEY")
 
-# Deriva automaticamente o endereço público da carteira através da chave privada
+# URL Oficial da Testnet da Hyperliquid
+HYPERLIQUID_API_URL = "https://api.hyperliquid-testnet.xyz/info"
+
 ACCOUNT_ADDRESS = ""
 if HYPERLIQUID_PRIVATE_KEY:
     try:
@@ -45,9 +46,9 @@ if HYPERLIQUID_PRIVATE_KEY:
         print(f"Erro ao derivar endereço da carteira: {e}")
 
 def enviar_telegram(mensagem):
-    """Envia relatórios financeiros e operacionais para o canal do Telegram."""
+    """Envia relatórios financeiros para o Telegram."""
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        print("❌ Erro: Variáveis do Telegram em falta no ambiente.")
+        print("❌ Erro: Variáveis do Telegram em falta.")
         return
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
@@ -59,16 +60,15 @@ def enviar_telegram(mensagem):
 
 
 # ==========================================
-# 3. CONSULTAS À API DA HYPERLIQUID
+# 3. CONSULTAS À API DA TESTNET
 # ==========================================
 def obter_precos_mercado():
-    """Obtém os preços em tempo real de BTC e ETH da Hyperliquid."""
+    """Obtém os preços em tempo real de BTC e ETH na Testnet."""
     precos = {"BTC": 0.0, "ETH": 0.0}
     try:
-        url = "https://api.hyperliquid.xyz/info"
         headers = {"Content-Type": "application/json"}
         data = {"type": "metaAndAssetCtxs"}
-        response = requests.post(url, json=data, headers=headers, timeout=10)
+        response = requests.post(HYPERLIQUID_API_URL, json=data, headers=headers, timeout=10)
         if response.status_code == 200:
             resultado = response.json()
             universe = resultado[0].get("universe", [])
@@ -82,22 +82,21 @@ def obter_precos_mercado():
     return precos
 
 def obter_estado_conta():
-    """Obtém o património, saldo em caixa e posições da conta na Hyperliquid."""
+    """Obtém o património, saldo e posições na Testnet."""
     if not ACCOUNT_ADDRESS:
         return None
     try:
-        url = "https://api.hyperliquid.xyz/info"
         headers = {"Content-Type": "application/json"}
         data = {"type": "clearinghouseState", "user": ACCOUNT_ADDRESS}
-        response = requests.post(url, json=data, headers=headers, timeout=10)
+        response = requests.post(HYPERLIQUID_API_URL, json=data, headers=headers, timeout=10)
         if response.status_code == 200:
             return response.json()
     except Exception as e:
-        print(f"Erro ao consultar o estado da conta: {e}")
+        print(f"Erro ao consultar o estado da conta na Testnet: {e}")
     return None
 
 def gerar_relatorio_financeiro():
-    """Constrói o relatório financeiro detalhado com preços em tempo real e métricas da carteira."""
+    """Constrói o relatório financeiro detalhado com base na Testnet."""
     precos = obter_precos_mercado()
     estado = obter_estado_conta()
     
@@ -114,11 +113,8 @@ def gerar_relatorio_financeiro():
         margin_summary = estado.get("marginSummary", {})
         patrimonio = float(margin_summary.get("accountValue", 0.0))
         total_ntl_pos = float(margin_summary.get("totalNtlPos", 0.0))
-        
-        # Saldo em caixa disponível na conta
         saldo_caixa = float(estado.get("withdrawable", 0.0))
         
-        # Analisar posições ativas e PnL não realizado
         asset_positions = estado.get("assetPositions", [])
         for p in asset_positions:
             pos = p.get("position", {})
@@ -130,14 +126,14 @@ def gerar_relatorio_financeiro():
                 posicoes_detalhe += f"• `{coin}`: Tamanho {szi} | PnL: `$ {unrealized_pnl:.2f}`\n"
     
     if not posicoes_detalhe:
-        posicoes_detalhe = "• Sem posições abertas no momento.\n"
+        posicoes_detalhe = "• Sem posições abertas na Testnet.\n"
 
     relatorio = (
-        f"📊 *Relatório Financeiro Detalhado — Trafulha*\n\n"
-        f"🪙 *Preços de Mercado (Tempo Real)*\n"
+        f"🧪 *Relatório Testnet (Dinheiro Falso) — Trafulha*\n\n"
+        f"🪙 *Preços de Mercado (Testnet)*\n"
         f"• **BTC**: `$ {btc_preco:,.2f}`\n"
         f"• **ETH**: `$ {eth_preco:,.2f}`\n\n"
-        f"💰 *Métricas da Carteira*\n"
+        f"💰 *Métricas da Carteira (Testnet)*\n"
         f"• **Património Atual (Equity)**: `$ {patrimonio:,.2f}`\n"
         f"• **Saldo em Caixa (Withdrawable)**: `$ {saldo_caixa:,.2f}`\n"
         f"• **Total na Conta / Alocado**: `$ {total_ntl_pos:,.2f}`\n"
@@ -148,11 +144,11 @@ def gerar_relatorio_financeiro():
     return relatorio
 
 
-print("🤖 Robô Trafulha iniciado com módulo financeiro ativo!")
+print("🤖 Robô Trafulha iniciado na Testnet!")
 mensagem_inicial = gerar_relatorio_financeiro()
 enviar_telegram(mensagem_inicial)
 
-# Loop principal: envia o relatório financeiro periódico (a cada 1 hora)
+# Loop periódico a cada 1 hora
 while True:
     time.sleep(1800)  
     relatorio_periodico = gerar_relatorio_financeiro()
