@@ -124,4 +124,74 @@ def executar_logica_trading(ativo, preco_atual):
             qtd = valor_investir / preco_atual
             ESTADO_ROBO["caixa"] -= valor_investir
             ESTADO_ROBO["eth_tamanho"] += qtd
-            sinal_mensagem = f"🟢 *[TRAFULHA COMPRA]* ETH caiu
+            sinal_mensagem = f"🟢 *[TRAFULHA COMPRA]* ETH caiu {variacao:.2f}%. Compra automática de `{qtd:.4f} ETH` a `$ {preco_atual:,.2f}`!"
+            
+        elif variacao >= 0.8 and ESTADO_ROBO["eth_tamanho"] > 0:
+            qtd_venda = ESTADO_ROBO["eth_tamanho"] * 0.2
+            valor_recebido = qtd_venda * preco_atual
+            ESTADO_ROBO["caixa"] += valor_recebido
+            ESTADO_ROBO["eth_tamanho"] -= qtd_venda
+            sinal_mensagem = f"💰 *[TRAFULHA VENDA/LUCRO]* ETH subiu {variacao:.2f}%. Lucro realizado de `$ {valor_recebido:,.2f}`!"
+            
+        ESTADO_ROBO["eth_preco_anterior"] = preco_atual
+
+    return sinal_mensagem
+
+def gerar_relatorio_ciclo():
+    global ESTADO_ROBO
+    precos = obter_precos_mercado()
+    btc_preco = precos.get("BTC", 0.0)
+    eth_preco = precos.get("ETH", 0.0)
+    
+    if btc_preco == 0.0 or eth_preco == 0.0:
+        return "⚠️ Erro ao obter preços de mercado."
+
+    # Executa a lógica de decisão para cada ativo
+    alerta_btc = executar_logica_trading("BTC", btc_preco)
+    alerta_eth = executar_logica_trading("ETH", eth_preco)
+
+    # Cálculos financeiros globais da carteira
+    btc_valor_atual = ESTADO_ROBO["btc_tamanho"] * btc_preco
+    eth_valor_atual = ESTADO_ROBO["eth_tamanho"] * eth_preco
+    total_ntl_pos = btc_valor_atual + eth_valor_atual
+    
+    # Património total = Caixa + Valor atual das posições
+    patrimonio = ESTADO_ROBO["caixa"] + total_ntl_pos
+    
+    # Capital inicial de referência era $10,000.00
+    lucro_total = patrimonio - 10000.00
+    emoji_pnl = "🟢" if lucro_total >= 0 else "🔴"
+
+    # Constrói o relatório completo
+    relatorio = f"🤖 *Relatório Smart Trading — Trafulha*\n\n"
+    
+    if alerta_btc:
+        relatorio += f"{alerta_btc}\n"
+    if alerta_eth:
+        relatorio += f"{alerta_eth}\n"
+
+    relatorio += (
+        f"🪙 *Preços Atuais*\n"
+        f"• **BTC**: `$ {btc_preco:,.2f}`\n"
+        f"• **ETH**: `$ {eth_preco:,.2f}`\n\n"
+        f"💰 *Métricas da Carteira*\n"
+        f"• **Património Total (Equity)**: `$ {patrimonio:,.2f}`\n"
+        f"• **Saldo em Caixa (Livre)**: `$ {ESTADO_ROBO['caixa']:,.2f}`\n"
+        f"• **Alocado em Posições**: `$ {total_ntl_pos:,.2f}`\n"
+        f"• **Lucro / Prejuízo (PnL)**: `$ {lucro_total:,.2f}` {emoji_pnl}\n\n"
+        f"📈 *Posições Ativas*:\n"
+        f"• `BTC`: {ESTADO_ROBO['btc_tamanho']:.4f}\n"
+        f"• `ETH`: {ESTADO_ROBO['eth_tamanho']:.4f}"
+    )
+    return relatorio
+
+
+print("🤖 Robô Trafulha Smart Trading Iniciado!")
+mensagem_inicial = gerar_relatorio_ciclo()
+enviar_telegram(mensagem_initial)
+
+# Loop principal: monitoriza o mercado e envia relatórios a cada 30 minutos
+while True:
+    time.sleep(1800) # Intervalo de 30 minutos para avaliar o mercado
+    relatorio_periodico = gerar_relatorio_ciclo()
+    enviar_telegram(relatorio_periodico)
