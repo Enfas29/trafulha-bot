@@ -83,17 +83,14 @@ def executar_logica_trading(ativo, preco_atual):
     global ESTADO_ROBO
     sinal_mensagem = ""
     
-    # Se for a primeira execução, guarda apenas o preço de referência
     if ativo == "BTC":
         if ESTADO_ROBO["btc_preco_anterior"] == 0.0:
             ESTADO_ROBO["btc_preco_anterior"] = preco_atual
-            # Abre posição inicial de teste
             ESTADO_ROBO["btc_tamanho"] = 2500.0 / preco_atual
             return "🟢 *[TRAFULHA INÍCIO]* Posição inicial aberta em BTC."
         
         variacao = ((preco_atual - ESTADO_ROBO["btc_preco_anterior"]) / ESTADO_ROBO["btc_preco_anterior"]) * 100
         
-        # Estratégia: Se cair mais de 0.5%, compra em baixa (se tiver caixa)
         if variacao <= -0.5 and ESTADO_ROBO["caixa"] >= 500:
             valor_investir = 500.0
             qtd = valor_investir / preco_atual
@@ -101,9 +98,8 @@ def executar_logica_trading(ativo, preco_atual):
             ESTADO_ROBO["btc_tamanho"] += qtd
             sinal_mensagem = f"🟢 *[TRAFULHA COMPRA]* BTC caiu {variacao:.2f}%. Compra automática de `{qtd:.4f} BTC` a `$ {preco_atual:,.2f}`!"
         
-        # Estratégia: Se subir mais de 0.8%, vende parte para encaixar lucro
         elif variacao >= 0.8 and ESTADO_ROBO["btc_tamanho"] > 0:
-            qtd_venda = ESTADO_ROBO["btc_tamanho"] * 0.2 # Vende 20 da posição
+            qtd_venda = ESTADO_ROBO["btc_tamanho"] * 0.2
             valor_recebido = qtd_venda * preco_atual
             ESTADO_ROBO["caixa"] += valor_recebido
             ESTADO_ROBO["btc_tamanho"] -= qtd_venda
@@ -146,23 +142,17 @@ def gerar_relatorio_ciclo():
     if btc_preco == 0.0 or eth_preco == 0.0:
         return "⚠️ Erro ao obter preços de mercado."
 
-    # Executa a lógica de decisão para cada ativo
     alerta_btc = executar_logica_trading("BTC", btc_preco)
     alerta_eth = executar_logica_trading("ETH", eth_preco)
 
-    # Cálculos financeiros globais da carteira
     btc_valor_atual = ESTADO_ROBO["btc_tamanho"] * btc_preco
     eth_valor_atual = ESTADO_ROBO["eth_tamanho"] * eth_preco
     total_ntl_pos = btc_valor_atual + eth_valor_atual
     
-    # Património total = Caixa + Valor atual das posições
     patrimonio = ESTADO_ROBO["caixa"] + total_ntl_pos
-    
-    # Capital inicial de referência era $10,000.00
     lucro_total = patrimonio - 10000.00
     emoji_pnl = "🟢" if lucro_total >= 0 else "🔴"
 
-    # Constrói o relatório completo
     relatorio = f"🤖 *Relatório Smart Trading — Trafulha*\n\n"
     
     if alerta_btc:
@@ -188,10 +178,10 @@ def gerar_relatorio_ciclo():
 
 print("🤖 Robô Trafulha Smart Trading Iniciado!")
 mensagem_inicial = gerar_relatorio_ciclo()
-enviar_telegram(mensagem_initial)
+enviar_telegram(mensagem_inicial)
 
 # Loop principal: monitoriza o mercado e envia relatórios a cada 30 minutos
 while True:
-    time.sleep(1800) # Intervalo de 30 minutos para avaliar o mercado
+    time.sleep(1800)  
     relatorio_periodico = gerar_relatorio_ciclo()
     enviar_telegram(relatorio_periodico)
