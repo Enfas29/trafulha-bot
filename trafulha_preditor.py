@@ -154,6 +154,6 @@ enviar_telegram(mensagem_inicial)
 
 # Loop principal: envia o relatório financeiro periódico (a cada 1 hora)
 while True:
-    time.sleep(3600)  
+    time.sleep(1800)  
     relatorio_periodico = gerar_relatorio_financeiro()
     enviar_telegram(relatorio_periodico)
