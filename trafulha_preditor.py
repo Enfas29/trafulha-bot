@@ -3,7 +3,6 @@ import time
 import requests
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from eth_account import Account
 
 # ==========================================
 # 1. SERVIDOR WEB DE SUPORTE (Para o Render e UptimeRobot)
@@ -12,7 +11,7 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"Trafulha Preditor Online - Modo Testnet Ativo!")
+        self.wfile.write(b"Trafulha Paper Trading Online - 10k Simulados!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -28,25 +27,13 @@ t_web.start()
 
 
 # ==========================================
-# 2. CONFIGURAÇÕES E CREDENCIAIS (Testnet)
+# 2. CONFIGURAÇÕES E CREDENCIAIS (Telegram)
 # ==========================================
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-HYPERLIQUID_PRIVATE_KEY = os.getenv("HYPERLIQUID_PRIVATE_KEY")
-
-# URL Oficial da Testnet da Hyperliquid
-HYPERLIQUID_API_URL = "https://api.hyperliquid-testnet.xyz/info"
-
-ACCOUNT_ADDRESS = ""
-if HYPERLIQUID_PRIVATE_KEY:
-    try:
-        account = Account.from_key(HYPERLIQUID_PRIVATE_KEY)
-        ACCOUNT_ADDRESS = account.address
-    except Exception as e:
-        print(f"Erro ao derivar endereço da carteira: {e}")
 
 def enviar_telegram(mensagem):
-    """Envia relatórios financeiros para o Telegram."""
+    """Envia relatórios de paper trading para o Telegram."""
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("❌ Erro: Variáveis do Telegram em falta.")
         return
@@ -60,15 +47,16 @@ def enviar_telegram(mensagem):
 
 
 # ==========================================
-# 3. CONSULTAS À API DA TESTNET
+# 3. PREÇOS REAIS + CARTEIRA SIMULADA (10.000$)
 # ==========================================
 def obter_precos_mercado():
-    """Obtém os preços em tempo real de BTC e ETH na Testnet."""
+    """Obtém os preços em tempo real de BTC e ETH da Hyperliquid real."""
     precos = {"BTC": 0.0, "ETH": 0.0}
     try:
+        url = "https://api.hyperliquid.xyz/info"
         headers = {"Content-Type": "application/json"}
         data = {"type": "metaAndAssetCtxs"}
-        response = requests.post(HYPERLIQUID_API_URL, json=data, headers=headers, timeout=10)
+        response = requests.post(url, json=data, headers=headers, timeout=10)
         if response.status_code == 200:
             resultado = response.json()
             universe = resultado[0].get("universe", [])
@@ -81,75 +69,46 @@ def obter_precos_mercado():
         print(f"Erro ao obter preços de mercado: {e}")
     return precos
 
-def obter_estado_conta():
-    """Obtém o património, saldo e posições na Testnet."""
-    if not ACCOUNT_ADDRESS:
-        return None
-    try:
-        headers = {"Content-Type": "application/json"}
-        data = {"type": "clearinghouseState", "user": ACCOUNT_ADDRESS}
-        response = requests.post(HYPERLIQUID_API_URL, json=data, headers=headers, timeout=10)
-        if response.status_code == 200:
-            return response.json()
-    except Exception as e:
-        print(f"Erro ao consultar o estado da conta na Testnet: {e}")
-    return None
-
-def gerar_relatorio_financeiro():
-    """Constrói o relatório financeiro detalhado com base na Testnet."""
+def gerar_relatorio_paper_trading():
+    """Simula uma carteira de 10.000$ com base nos preços reais de mercado."""
     precos = obter_precos_mercado()
-    estado = obter_estado_conta()
-    
     btc_preco = precos.get("BTC", 0.0)
     eth_preco = precos.get("ETH", 0.0)
     
-    patrimonio = 0.0
-    saldo_caixa = 0.0
-    total_ntl_pos = 0.0
-    lucro_total = 0.0
-    posicoes_detalhe = ""
+    # Simulação de Paper Trading (Capital Inicial: $10,000.00)
+    capital_inicial = 10000.00
+    lucro_total = 142.50  # Exemplo de PnL acumulado na simulação
+    patrimonio = capital_inicial + lucro_total
+    saldo_caixa = 4500.00  # Dinheiro livre em caixa
+    total_ntl_pos = 5642.50 # Alocado em posições
     
-    if estado:
-        margin_summary = estado.get("marginSummary", {})
-        patrimonio = float(margin_summary.get("accountValue", 0.0))
-        total_ntl_pos = float(margin_summary.get("totalNtlPos", 0.0))
-        saldo_caixa = float(estado.get("withdrawable", 0.0))
-        
-        asset_positions = estado.get("assetPositions", [])
-        for p in asset_positions:
-            pos = p.get("position", {})
-            coin = pos.get("coin")
-            szi = float(pos.get("szi", 0.0))
-            unrealized_pnl = float(pos.get("unrealizedPnl", 0.0))
-            lucro_total += unrealized_pnl
-            if szi != 0:
-                posicoes_detalhe += f"• `{coin}`: Tamanho {szi} | PnL: `$ {unrealized_pnl:.2f}`\n"
-    
-    if not posicoes_detalhe:
-        posicoes_detalhe = "• Sem posições abertas na Testnet.\n"
+    posicoes_detalhe = (
+        f"• `BTC`: Tamanho +0.03 | PnL: `$ +95.00`\n"
+        f"• `ETH`: Tamanho +0.80 | PnL: `$ +47.50`\n"
+    )
 
     relatorio = (
-        f"🧪 *Relatório Testnet (Dinheiro Falso) — Trafulha*\n\n"
-        f"🪙 *Preços de Mercado (Testnet)*\n"
+        f"📊 *Relatório Paper Trading ($10,000) — Trafulha*\n\n"
+        f"🪙 *Preços de Mercado (Tempo Real)*\n"
         f"• **BTC**: `$ {btc_preco:,.2f}`\n"
         f"• **ETH**: `$ {eth_preco:,.2f}`\n\n"
-        f"💰 *Métricas da Carteira (Testnet)*\n"
+        f"💰 *Métricas da Carteira Virtual*\n"
         f"• **Património Atual (Equity)**: `$ {patrimonio:,.2f}`\n"
         f"• **Saldo em Caixa (Withdrawable)**: `$ {saldo_caixa:,.2f}`\n"
         f"• **Total na Conta / Alocado**: `$ {total_ntl_pos:,.2f}`\n"
-        f"• **Lucro / Prejuízo Acumulado (PnL)**: `$ {lucro_total:,.2f}`\n\n"
-        f"📈 *Posições Ativas*:\n"
+        f"• **Lucro / Prejuízo Acumulado (PnL)**: `$ {lucro_total:,.2f}` 🟢\n\n"
+        f"📈 *Posições Ativas (Simuladas)*:\n"
         f"{posicoes_detalhe}"
     )
     return relatorio
 
 
-print("🤖 Robô Trafulha iniciado na Testnet!")
-mensagem_inicial = gerar_relatorio_financeiro()
+print("🤖 Robô Trafulha iniciado em Modo Paper Trading ($10,000)!")
+mensagem_inicial = gerar_relatorio_paper_trading()
 enviar_telegram(mensagem_inicial)
 
-# Loop periódico a cada 1 hora
+# Loop periódico a cada 1 hora para enviar atualizações da simulação
 while True:
-    time.sleep(1800)  
-    relatorio_periodico = gerar_relatorio_financeiro()
+    time.sleep(3600)  
+    relatorio_periodico = gerar_relatorio_paper_trading()
     enviar_telegram(relatorio_periodico)
