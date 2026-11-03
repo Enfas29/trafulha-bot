@@ -12,7 +12,6 @@ ARQUIVO_ESTADO = "estado_trafulha.json"
 # 1. GESTÃO DE ESTADO E PERSISTÊNCIA
 # ==========================================
 def carregar_estado():
-    """Carrega o estado guardado no ficheiro ou cria um novo se não existir."""
     if os.path.exists(ARQUIVO_ESTADO):
         try:
             with open(ARQUIVO_ESTADO, "r") as f:
@@ -21,7 +20,6 @@ def carregar_estado():
         except Exception as e:
             print(f"Erro ao ler ficheiro de estado: {e}")
     
-    # Estado inicial padrão caso o ficheiro não exista
     return {
         "inicializado": False,
         "caixa": 5000.0,
@@ -34,7 +32,6 @@ def carregar_estado():
     }
 
 def salvar_estado(estado):
-    """Guarda o estado atual num ficheiro JSON para não se perder em reinícios."""
     try:
         with open(ARQUIVO_ESTADO, "w") as f:
             json.dump(estado, f)
@@ -44,7 +41,7 @@ def salvar_estado(estado):
 ESTADO_ROBO = carregar_estado()
 
 # ==========================================
-# 2. HISTÓRICO E SERVIDOR WEB COM GRÁFICO
+# 2. HISTÓRICO E SERVIDOR WEB COM AUTO-REFRESH
 # ==========================================
 HISTORICO_GRAFICO = {
     "timestamps": [],
@@ -53,24 +50,36 @@ HISTORICO_GRAFICO = {
 
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        if self.path == "/" or self.path == "/grafico":
+        # Rota para fornecer os dados em JSON para o gráfico atualizar sozinho
+        if self.path == "/dados":
+            self.send_response(200)
+            self.send_header("Content-type", "application/json")
+            self.end_headers()
+            dados = {
+                "timestamps": HISTORICO_GRAFICO["timestamps"],
+                "patrimonio": HISTORICO_GRAFICO["patrimonio"]
+            }
+            self.wfile.write(json.dumps(dados).encode("utf-8"))
+            
+        elif self.path == "/" or self.path == "/grafico":
             self.send_response(200)
             self.send_header("Content-type", "text/html; charset=utf-8")
             self.end_headers()
             
-            html = f"""
+            html = """
             <!DOCTYPE html>
             <html lang="pt">
             <head>
                 <meta charset="UTF-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>Trafulha Smart Trading - Dashboard</title>
+                <title>Trafulha Smart Trading - Live Chart</title>
                 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
                 <style>
-                    body {{ font-family: Arial, sans-serif; background-color: #0f172a; color: #f8fafc; text-align: center; margin: 0; padding: 20px; }}
-                    h1 {{ color: #38bdf8; }}
-                    .card {{ background: #1e293b; padding: 20px; border-radius: 12px; max-width: 800px; margin: 20px auto; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }}
-                    canvas {{ max-height: 400px; }}
+                    body { font-family: Arial, sans-serif; background-color: #0f172a; color: #f8fafc; text-align: center; margin: 0; padding: 20px; }
+                    h1 { color: #38bdf8; }
+                    .card { background: #1e293b; padding: 20px; border-radius: 12px; max-width: 800px; margin: 20px auto; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+                    canvas { max-height: 400px; }
+                    .status { font-size: 14px; color: #10b981; margin-top: 10px; }
                 </style>
             </head>
             <body>
@@ -78,32 +87,56 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
                 <div class="card">
                     <h3>Evolução do Património Total (Equity)</h3>
                     <canvas id="graficoPatrimonio"></canvas>
+                    <div class="status">🟢 Atualização automática em tempo real ativa</div>
                 </div>
                 <script>
                     const ctx = document.getElementById('graficoPatrimonio').getContext('2d');
-                    const grafico = new Chart(ctx, {{
+                    const grafico = new Chart(ctx, {
                         type: 'line',
-                        data: {{
-                            labels: {HISTORICO_GRAFICO["timestamps"]},
-                            datasets: [{{
+                        data: {
+                            labels: [],
+                            datasets: [{
                                 label: 'Património ($ USD)',
-                                data: {HISTORICO_GRAFICO["patrimonio"]},
+                                data: [],
                                 borderColor: '#38bdf8',
                                 backgroundColor: 'rgba(56, 189, 248, 0.1)',
                                 borderWidth: 2,
                                 fill: true,
                                 tension: 0.2
-                            }}]
-                        }},
-                        options: {{
+                            }]
+                        },
+                        options: {
                             responsive: true,
-                            plugins: {{ legend: {{ labels: {{ color: '#f8fafc' }} }} }},
-                            scales: {{
-                                x: {{ ticks: {{ color: '#94a3b8' }} }},
-                                y: {{ ticks: {{ color: '#94a3b8' }} }}
-                            }}
-                        }}
-                    }});
+                            plugins: { legend: { labels: { color: '#f8fafc' } } },
+                            scales: {
+                                x: { ticks: { color: '#94a3b8' } },
+                                y: { 
+                                    ticks: { color: '#94a3b8' },
+                                    // Escala dinâmica para acompanhar o valor real do portefólio
+                                    suggestedMin: 9800,
+                                    suggestedMax: 10200
+                                }
+                            }
+                        }
+                    });
+
+                    // Função que vai buscar novos dados ao servidor a cada 10 segundos
+                    async function atualizarGrafico() {
+                        try {
+                            const resposta = await fetch('/dados');
+                            const dados = await resposta.json();
+                            
+                            grafico.data.labels = dados.timestamps;
+                            grafico.data.datasets[0].data = dados.patrimonio;
+                            grafico.update('none'); // Atualiza o gráfico de forma fluida sem piscar
+                        } catch (erro) {
+                            console.error('Erro ao atualizar o gráfico:', erro);
+                        }
+                    }
+
+                    // Executa logo ao abrir e depois repete a cada 10 segundos
+                    atualizarGrafico();
+                    setInterval(atualizarGrafico, 10000);
                 </script>
             </body>
             </html>
@@ -190,8 +223,16 @@ def avaliar_e_negociar():
         ESTADO_ROBO["data_atual"] = hoje
         ESTADO_ROBO["inicializado"] = True
         salvar_estado(ESTADO_ROBO)
-        enviar_telegram("🟢 *[TRAFULHA]* Robô inicializado e memória ativada!")
-        return
+        enviar_telegram("🟢 *[TRAFULHA]* Robô inicializado e gráfico dinâmico pronto!")
+
+    # Regista o ponto atual para o gráfico imediatamente
+    hora_atual = datetime.now().strftime("%H:%M:%S")
+    if not HISTORICO_GRAFICO["timestamps"] or HISTORICO_GRAFICO["timestamps"][-1] != hora_atual:
+        HISTORICO_GRAFICO["timestamps"].append(hora_atual)
+        HISTORICO_GRAFICO["patrimonio"].append(round(patrimonio_atual, 2))
+        if len(HISTORICO_GRAFICO["timestamps"]) > 50:
+            HISTORICO_GRAFICO["timestamps"].pop(0)
+            HISTORICO_GRAFICO["patrimonio"].pop(0)
 
     # Verificar se mudou o dia
     if hoje != ESTADO_ROBO["data_atual"]:
@@ -245,15 +286,6 @@ def avaliar_e_negociar():
         ESTADO_ROBO["eth_preco_referencia"] = eth_preco
         salvar_estado(ESTADO_ROBO)
         enviar_telegram(f"💰 *[TRAFULHA VENDA]* ETH subiu {variacao_eth:.2f}%. Lucro encaixado: `$ {valor_recebido:,.2f}`!")
-
-    # Atualiza histórico do gráfico
-    hora_atual = datetime.now().strftime("%H:%M")
-    if not HISTORICO_GRAFICO["timestamps"] or HISTORICO_GRAFICO["timestamps"][-1] != hora_atual:
-        HISTORICO_GRAFICO["timestamps"].append(hora_atual)
-        HISTORICO_GRAFICO["patrimonio"].append(round(patrimonio_atual, 2))
-        if len(HISTORICO_GRAFICO["timestamps"]) > 50:
-            HISTORICO_GRAFICO["timestamps"].pop(0)
-            HISTORICO_GRAFICO["patrimonio"].pop(0)
 
 def gerar_relatorio_carteira():
     global ESTADO_ROBO
@@ -309,7 +341,7 @@ def loop_relatorios():
             print(f"Erro relatórios: {e}")
         time.sleep(1800)
 
-print("🤖 Robô Trafulha com Memória Persistente Iniciado!")
+print("🤖 Robô Trafulha com Gráfico Auto-Refresh Iniciado!")
 threading.Thread(target=loop_trading, daemon=True).start()
 threading.Thread(target=loop_relatorios, daemon=True).start()
 
