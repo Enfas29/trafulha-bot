@@ -4,3 +4,4 @@ numpy
 matplotlib
 hyperliquid-python-sdk
 eth-account
+pymongo
