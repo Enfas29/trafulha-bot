@@ -306,7 +306,7 @@ def loop_trading():
             avaliar_e_negociar()
         except Exception as e:
             print(f"Erro trading: {e}")
-        time.sleep(120)
+        time.sleep(60)
 
 def loop_relatorios():
     time.sleep(10)
