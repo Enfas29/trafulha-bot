@@ -1,12 +1,50 @@
 import os
 import time
+import json
 import requests
 import threading
 from datetime import datetime
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
+ARQUIVO_ESTADO = "estado_trafulha.json"
+
 # ==========================================
-# 1. HISTÓRICO E SERVIDOR WEB COM GRÁFICO
+# 1. GESTÃO DE ESTADO E PERSISTÊNCIA
+# ==========================================
+def carregar_estado():
+    """Carrega o estado guardado no ficheiro ou cria um novo se não existir."""
+    if os.path.exists(ARQUIVO_ESTADO):
+        try:
+            with open(ARQUIVO_ESTADO, "r") as f:
+                print("📂 Estado anterior recuperado com sucesso!")
+                return json.load(f)
+        except Exception as e:
+            print(f"Erro ao ler ficheiro de estado: {e}")
+    
+    # Estado inicial padrão caso o ficheiro não exista
+    return {
+        "inicializado": False,
+        "caixa": 5000.0,
+        "btc_tamanho": 0.0,
+        "btc_preco_referencia": 0.0,
+        "eth_tamanho": 0.0,
+        "eth_preco_referencia": 0.0,
+        "patrimonio_inicio_dia": 10000.00,
+        "data_atual": ""
+    }
+
+def salvar_estado(estado):
+    """Guarda o estado atual num ficheiro JSON para não se perder em reinícios."""
+    try:
+        with open(ARQUIVO_ESTADO, "w") as f:
+            json.dump(estado, f)
+    except Exception as e:
+        print(f"Erro ao salvar estado: {e}")
+
+ESTADO_ROBO = carregar_estado()
+
+# ==========================================
+# 2. HISTÓRICO E SERVIDOR WEB COM GRÁFICO
 # ==========================================
 HISTORICO_GRAFICO = {
     "timestamps": [],
@@ -90,7 +128,7 @@ t_web.start()
 
 
 # ==========================================
-# 2. CONFIGURAÇÕES E CREDENCIAIS (Telegram)
+# 3. CONFIGURAÇÕES E CREDENCIAIS (Telegram)
 # ==========================================
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
@@ -107,19 +145,8 @@ def enviar_telegram(mensagem):
 
 
 # ==========================================
-# 3. MOTOR DE TRADING E CONTROLO DIÁRIO
+# 4. MOTOR DE TRADING E CONTROLO DIÁRIO
 # ==========================================
-ESTADO_ROBO = {
-    "inicializado": False,
-    "caixa": 5000.0,
-    "btc_tamanho": 0.0,
-    "btc_preco_referencia": 0.0,
-    "eth_tamanho": 0.0,
-    "eth_preco_referencia": 0.0,
-    "patrimonio_inicio_dia": 0.0,
-    "data_atual": ""
-}
-
 def obter_precos_mercado():
     precos = {"BTC": 0.0, "ETH": 0.0}
     try:
@@ -162,10 +189,11 @@ def avaliar_e_negociar():
         ESTADO_ROBO["patrimonio_inicio_dia"] = 10000.00
         ESTADO_ROBO["data_atual"] = hoje
         ESTADO_ROBO["inicializado"] = True
-        enviar_telegram("🟢 *[TRAFULHA]* Robô inicializado com sucesso e a monitorizar!")
+        salvar_estado(ESTADO_ROBO)
+        enviar_telegram("🟢 *[TRAFULHA]* Robô inicializado e memória ativada!")
         return
 
-    # Verificar se mudou o dia para enviar o resumo do dia anterior
+    # Verificar se mudou o dia
     if hoje != ESTADO_ROBO["data_atual"]:
         lucro_ontem = patrimonio_atual - ESTADO_ROBO["patrimonio_inicio_dia"]
         emoji_ontem = "🟢" if lucro_ontem >= 0 else "🔴"
@@ -178,9 +206,9 @@ def avaliar_e_negociar():
         )
         enviar_telegram(relatorio_diario)
         
-        # Atualiza para o novo dia
         ESTADO_ROBO["data_atual"] = hoje
         ESTADO_ROBO["patrimonio_inicio_dia"] = patrimonio_atual
+        salvar_estado(ESTADO_ROBO)
 
     # Lógica BTC
     variacao_btc = ((btc_preco - ESTADO_ROBO["btc_preco_referencia"]) / ESTADO_ROBO["btc_preco_referencia"]) * 100
@@ -189,6 +217,7 @@ def avaliar_e_negociar():
         ESTADO_ROBO["caixa"] -= 500.0
         ESTADO_ROBO["btc_tamanho"] += qtd
         ESTADO_ROBO["btc_preco_referencia"] = btc_preco
+        salvar_estado(ESTADO_ROBO)
         enviar_telegram(f"🟢 *[TRAFULHA COMPRA]* BTC caiu {variacao_btc:.2f}%. Compra de `{qtd:.4f} BTC` a `$ {btc_preco:,.2f}`!")
     elif variacao_btc >= 1.0 and ESTADO_ROBO["btc_tamanho"] > 0:
         qtd_venda = ESTADO_ROBO["btc_tamanho"] * 0.25
@@ -196,6 +225,7 @@ def avaliar_e_negociar():
         ESTADO_ROBO["caixa"] += valor_recebido
         ESTADO_ROBO["btc_tamanho"] -= qtd_venda
         ESTADO_ROBO["btc_preco_referencia"] = btc_preco
+        salvar_estado(ESTADO_ROBO)
         enviar_telegram(f"💰 *[TRAFULHA VENDA]* BTC subiu {variacao_btc:.2f}%. Lucro encaixado: `$ {valor_recebido:,.2f}`!")
 
     # Lógica ETH
@@ -205,6 +235,7 @@ def avaliar_e_negociar():
         ESTADO_ROBO["caixa"] -= 500.0
         ESTADO_ROBO["eth_tamanho"] += qtd
         ESTADO_ROBO["eth_preco_referencia"] = eth_preco
+        salvar_estado(ESTADO_ROBO)
         enviar_telegram(f"🟢 *[TRAFULHA COMPRA]* ETH caiu {variacao_eth:.2f}%. Compra de `{qtd:.4f} ETH` a `$ {eth_preco:,.2f}`!")
     elif variacao_eth >= 1.0 and ESTADO_ROBO["eth_tamanho"] > 0:
         qtd_venda = ESTADO_ROBO["eth_tamanho"] * 0.25
@@ -212,6 +243,7 @@ def avaliar_e_negociar():
         ESTADO_ROBO["caixa"] += valor_recebido
         ESTADO_ROBO["eth_tamanho"] -= qtd_venda
         ESTADO_ROBO["eth_preco_referencia"] = eth_preco
+        salvar_estado(ESTADO_ROBO)
         enviar_telegram(f"💰 *[TRAFULHA VENDA]* ETH subiu {variacao_eth:.2f}%. Lucro encaixado: `$ {valor_recebido:,.2f}`!")
 
     # Atualiza histórico do gráfico
@@ -237,11 +269,9 @@ def gerar_relatorio_carteira():
     total_pos = btc_val + eth_val
     patrimonio = ESTADO_ROBO["caixa"] + total_pos
     
-    # Lucro do dia atual
     lucro_hoje = patrimonio - ESTADO_ROBO["patrimonio_inicio_dia"]
     emoji_hoje = "🟢" if lucro_hoje >= 0 else "🔴"
     
-    # Lucro total desde o início
     lucro_total = patrimonio - 10000.00
     emoji_total = "🟢" if lucro_total >= 0 else "🔴"
 
@@ -259,7 +289,7 @@ def gerar_relatorio_carteira():
 
 
 # ==========================================
-# 4. BACKGROUND LOOPS
+# 5. BACKGROUND LOOPS
 # ==========================================
 def loop_trading():
     while True:
@@ -279,7 +309,7 @@ def loop_relatorios():
             print(f"Erro relatórios: {e}")
         time.sleep(1800)
 
-print("🤖 Robô Trafulha com Resumo Diário e Gráfico Iniciado!")
+print("🤖 Robô Trafulha com Memória Persistente Iniciado!")
 threading.Thread(target=loop_trading, daemon=True).start()
 threading.Thread(target=loop_relatorios, daemon=True).start()
 
