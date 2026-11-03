@@ -20,9 +20,10 @@ def carregar_estado():
         except Exception as e:
             print(f"Erro ao ler ficheiro de estado: {e}")
     
+    # Caixa a zero e capital 100% alocado em cripto desde o início
     return {
         "inicializado": False,
-        "caixa": 5000.0,
+        "caixa": 0.0,
         "btc_tamanho": 0.0,
         "btc_preco_referencia": 0.0,
         "eth_tamanho": 0.0,
@@ -50,7 +51,6 @@ HISTORICO_GRAFICO = {
 
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        # Rota para fornecer os dados em JSON para o gráfico atualizar sozinho
         if self.path == "/dados":
             self.send_response(200)
             self.send_header("Content-type", "application/json")
@@ -85,7 +85,7 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
             <body>
                 <h1>🤖 Trafulha Smart Trading - Live Chart</h1>
                 <div class="card">
-                    <h3>Evolução do Património Total (Equity)</h3>
+                    <h3>Evolução do Património Total (Equity - 100% Cripto)</h3>
                     <canvas id="graficoPatrimonio"></canvas>
                     <div class="status">🟢 Atualização automática em tempo real ativa</div>
                 </div>
@@ -112,7 +112,6 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
                                 x: { ticks: { color: '#94a3b8' } },
                                 y: { 
                                     ticks: { color: '#94a3b8' },
-                                    // Escala dinâmica para acompanhar o valor real do portefólio
                                     suggestedMin: 9800,
                                     suggestedMax: 10200
                                 }
@@ -120,21 +119,18 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
                         }
                     });
 
-                    // Função que vai buscar novos dados ao servidor a cada 10 segundos
                     async function atualizarGrafico() {
                         try {
                             const resposta = await fetch('/dados');
                             const dados = await resposta.json();
-                            
                             grafico.data.labels = dados.timestamps;
                             grafico.data.datasets[0].data = dados.patrimonio;
-                            grafico.update('none'); // Atualiza o gráfico de forma fluida sem piscar
+                            grafico.update('none');
                         } catch (erro) {
                             console.error('Erro ao atualizar o gráfico:', erro);
                         }
                     }
 
-                    // Executa logo ao abrir e depois repete a cada 10 segundos
                     atualizarGrafico();
                     setInterval(atualizarGrafico, 10000);
                 </script>
@@ -208,22 +204,24 @@ def avaliar_e_negociar():
     if btc_preco == 0.0 or eth_preco == 0.0:
         return
 
-    btc_val = ESTADO_ROBO["btc_tamanho"] * btc_preco
-    eth_val = ESTADO_ROBO["eth_tamanho"] * eth_preco
-    patrimonio_atual = ESTADO_ROBO["caixa"] + btc_val + eth_val
-    
     hoje = datetime.now().strftime("%Y-%m-%d")
 
+    # Inicialização: investe os 10k inteiros logo a dividir por igual ($5000 BTC e $5000 ETH)
     if not ESTADO_ROBO["inicializado"]:
-        ESTADO_ROBO["btc_tamanho"] = 2500.0 / btc_preco
+        ESTADO_ROBO["btc_tamanho"] = 5000.0 / btc_preco
         ESTADO_ROBO["btc_preco_referencia"] = btc_preco
-        ESTADO_ROBO["eth_tamanho"] = 2500.0 / eth_preco
+        ESTADO_ROBO["eth_tamanho"] = 5000.0 / eth_preco
         ESTADO_ROBO["eth_preco_referencia"] = eth_preco
+        ESTADO_ROBO["caixa"] = 0.0
         ESTADO_ROBO["patrimonio_inicio_dia"] = 10000.00
         ESTADO_ROBO["data_atual"] = hoje
         ESTADO_ROBO["inicializado"] = True
         salvar_estado(ESTADO_ROBO)
-        enviar_telegram("🟢 *[TRAFULHA]* Robô inicializado e gráfico dinâmico pronto!")
+        enviar_telegram("🟢 *[TRAFULHA]* Robô inicializado com 100% do capital alocado em cripto (BTC + ETH)!")
+
+    btc_val = ESTADO_ROBO["btc_tamanho"] * btc_preco
+    eth_val = ESTADO_ROBO["eth_tamanho"] * eth_preco
+    patrimonio_atual = ESTADO_ROBO["caixa"] + btc_val + eth_val
 
     # Regista o ponto atual para o gráfico imediatamente
     hora_atual = datetime.now().strftime("%H:%M:%S")
@@ -251,7 +249,7 @@ def avaliar_e_negociar():
         ESTADO_ROBO["patrimonio_inicio_dia"] = patrimonio_atual
         salvar_estado(ESTADO_ROBO)
 
-    # Lógica BTC
+    # Lógica BTC (vende parte se subir 1.0% para fazer caixa, compra se cair 0.6%)
     variacao_btc = ((btc_preco - ESTADO_ROBO["btc_preco_referencia"]) / ESTADO_ROBO["btc_preco_referencia"]) * 100
     if variacao_btc <= -0.6 and ESTADO_ROBO["caixa"] >= 500:
         qtd = 500.0 / btc_preco
@@ -341,7 +339,7 @@ def loop_relatorios():
             print(f"Erro relatórios: {e}")
         time.sleep(1800)
 
-print("🤖 Robô Trafulha com Gráfico Auto-Refresh Iniciado!")
+print("🤖 Robô Trafulha 100% Cripto Iniciado!")
 threading.Thread(target=loop_trading, daemon=True).start()
 threading.Thread(target=loop_relatorios, daemon=True).start()
 
