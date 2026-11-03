@@ -9,9 +9,11 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 ARQUIVO_ESTADO = "estado_trafulha.json"
 
 # ==========================================
-# 1. GESTÃO DE ESTADO E PERSISTÊNCIA
+# 1. GESTÃO DE ESTADO E PERSISTÊNCIA LIMPA
 # ==========================================
 def carregar_estado():
+    # Se quiseres forçar a limpeza total ao arrancar, 
+    # podes apagar o ficheiro anterior no Render ou usar esta base limpa:
     if os.path.exists(ARQUIVO_ESTADO):
         try:
             with open(ARQUIVO_ESTADO, "r") as f:
@@ -20,7 +22,6 @@ def carregar_estado():
         except Exception as e:
             print(f"Erro ao ler ficheiro de estado: {e}")
     
-    # Caixa a zero e capital 100% alocado em cripto desde o início
     return {
         "inicializado": False,
         "caixa": 0.0,
@@ -41,14 +42,15 @@ def salvar_estado(estado):
 
 ESTADO_ROBO = carregar_estado()
 
-# ==========================================
-# 2. HISTÓRICO E SERVIDOR WEB COM AUTO-REFRESH
-# ==========================================
+# Histórico do gráfico começa totalmente limpo para a nova fase
 HISTORICO_GRAFICO = {
     "timestamps": [],
     "patrimonio": []
 }
 
+# ==========================================
+# 2. SERVIDOR WEB COM AUTO-REFRESH
+# ==========================================
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/dados":
@@ -85,7 +87,7 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
             <body>
                 <h1>🤖 Trafulha Smart Trading - Live Chart</h1>
                 <div class="card">
-                    <h3>Evolução do Património Total (Equity - 100% Cripto)</h3>
+                    <h3>Evolução do Património Total (100% Cripto)</h3>
                     <canvas id="graficoPatrimonio"></canvas>
                     <div class="status">🟢 Atualização automática em tempo real ativa</div>
                 </div>
@@ -157,7 +159,7 @@ t_web.start()
 
 
 # ==========================================
-# 3. CONFIGURAÇÕES E CREDENCIAIS (Telegram)
+# 3. CREDENCIAIS TELEGRAM
 # ==========================================
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
@@ -174,7 +176,7 @@ def enviar_telegram(mensagem):
 
 
 # ==========================================
-# 4. MOTOR DE TRADING E CONTROLO DIÁRIO
+# 4. MOTOR DE TRADING
 # ==========================================
 def obter_precos_mercado():
     precos = {"BTC": 0.0, "ETH": 0.0}
@@ -206,8 +208,8 @@ def avaliar_e_negociar():
 
     hoje = datetime.now().strftime("%Y-%m-%d")
 
-    # Inicialização: investe os 10k inteiros logo a dividir por igual ($5000 BTC e $5000 ETH)
-    if not ESTADO_ROBO["inicializado"]:
+    # Força recomeço limpo se o estado anterior não estiver inicializado a 100% cripto
+    if not ESTADO_ROBO["inicializado"] or ESTADO_ROBO["caixa"] > 0:
         ESTADO_ROBO["btc_tamanho"] = 5000.0 / btc_preco
         ESTADO_ROBO["btc_preco_referencia"] = btc_preco
         ESTADO_ROBO["eth_tamanho"] = 5000.0 / eth_preco
@@ -217,13 +219,13 @@ def avaliar_e_negociar():
         ESTADO_ROBO["data_atual"] = hoje
         ESTADO_ROBO["inicializado"] = True
         salvar_estado(ESTADO_ROBO)
-        enviar_telegram("🟢 *[TRAFULHA]* Robô inicializado com 100% do capital alocado em cripto (BTC + ETH)!")
+        enviar_telegram("🟢 *[TRAFULHA]* Novo ciclo iniciado com 100% do capital alocado em cripto e gráfico limpo!")
 
     btc_val = ESTADO_ROBO["btc_tamanho"] * btc_preco
     eth_val = ESTADO_ROBO["eth_tamanho"] * eth_preco
     patrimonio_atual = ESTADO_ROBO["caixa"] + btc_val + eth_val
 
-    # Regista o ponto atual para o gráfico imediatamente
+    # Regista o ponto atual para o gráfico em direto
     hora_atual = datetime.now().strftime("%H:%M:%S")
     if not HISTORICO_GRAFICO["timestamps"] or HISTORICO_GRAFICO["timestamps"][-1] != hora_atual:
         HISTORICO_GRAFICO["timestamps"].append(hora_atual)
@@ -232,24 +234,16 @@ def avaliar_e_negociar():
             HISTORICO_GRAFICO["timestamps"].pop(0)
             HISTORICO_GRAFICO["patrimonio"].pop(0)
 
-    # Verificar se mudou o dia
+    # Mudança de dia
     if hoje != ESTADO_ROBO["data_atual"]:
         lucro_ontem = patrimonio_atual - ESTADO_ROBO["patrimonio_inicio_dia"]
         emoji_ontem = "🟢" if lucro_ontem >= 0 else "🔴"
-        
-        relatorio_diario = (
-            f"📅 *Resumo Diário do Trafulha*\n"
-            f"• **Dia anterior**: `{ESTADO_ROBO['data_atual']}`\n"
-            f"• **Resultado do Dia**: `$ {lucro_ontem:,.2f}` {emoji_ontem}\n"
-            f"• **Novo Património de Abertura**: `$ {patrimonio_atual:,.2f}`"
-        )
-        enviar_telegram(relatorio_diario)
-        
+        enviar_telegram(f"📅 *Resumo Diário*\n• **Resultado**: `$ {lucro_ontem:,.2f}` {emoji_ontem}")
         ESTADO_ROBO["data_atual"] = hoje
         ESTADO_ROBO["patrimonio_inicio_dia"] = patrimonio_atual
         salvar_estado(ESTADO_ROBO)
 
-    # Lógica BTC (vende parte se subir 1.0% para fazer caixa, compra se cair 0.6%)
+    # Lógica de Trading BTC
     variacao_btc = ((btc_preco - ESTADO_ROBO["btc_preco_referencia"]) / ESTADO_ROBO["btc_preco_referencia"]) * 100
     if variacao_btc <= -0.6 and ESTADO_ROBO["caixa"] >= 500:
         qtd = 500.0 / btc_preco
@@ -257,7 +251,7 @@ def avaliar_e_negociar():
         ESTADO_ROBO["btc_tamanho"] += qtd
         ESTADO_ROBO["btc_preco_referencia"] = btc_preco
         salvar_estado(ESTADO_ROBO)
-        enviar_telegram(f"🟢 *[TRAFULHA COMPRA]* BTC caiu {variacao_btc:.2f}%. Compra de `{qtd:.4f} BTC` a `$ {btc_preco:,.2f}`!")
+        enviar_telegram(f"🟢 *[COMPRA BTC]* Queda de {variacao_btc:.2f}% (`{qtd:.4f} BTC`)")
     elif variacao_btc >= 1.0 and ESTADO_ROBO["btc_tamanho"] > 0:
         qtd_venda = ESTADO_ROBO["btc_tamanho"] * 0.25
         valor_recebido = qtd_venda * btc_preco
@@ -265,9 +259,9 @@ def avaliar_e_negociar():
         ESTADO_ROBO["btc_tamanho"] -= qtd_venda
         ESTADO_ROBO["btc_preco_referencia"] = btc_preco
         salvar_estado(ESTADO_ROBO)
-        enviar_telegram(f"💰 *[TRAFULHA VENDA]* BTC subiu {variacao_btc:.2f}%. Lucro encaixado: `$ {valor_recebido:,.2f}`!")
+        enviar_telegram(f"💰 *[VENDA BTC]* Subida de {variacao_btc:.2f}% (`$ {valor_recebido:,.2f}`)")
 
-    # Lógica ETH
+    # Lógica de Trading ETH
     variacao_eth = ((eth_preco - ESTADO_ROBO["eth_preco_referencia"]) / ESTADO_ROBO["eth_preco_referencia"]) * 100
     if variacao_eth <= -0.6 and ESTADO_ROBO["caixa"] >= 500:
         qtd = 500.0 / eth_preco
@@ -275,7 +269,7 @@ def avaliar_e_negociar():
         ESTADO_ROBO["eth_tamanho"] += qtd
         ESTADO_ROBO["eth_preco_referencia"] = eth_preco
         salvar_estado(ESTADO_ROBO)
-        enviar_telegram(f"🟢 *[TRAFULHA COMPRA]* ETH caiu {variacao_eth:.2f}%. Compra de `{qtd:.4f} ETH` a `$ {eth_preco:,.2f}`!")
+        enviar_telegram(f"🟢 *[COMPRA ETH]* Queda de {variacao_eth:.2f}% (`{qtd:.4f} ETH`)")
     elif variacao_eth >= 1.0 and ESTADO_ROBO["eth_tamanho"] > 0:
         qtd_venda = ESTADO_ROBO["eth_tamanho"] * 0.25
         valor_recebido = qtd_venda * eth_preco
@@ -283,7 +277,7 @@ def avaliar_e_negociar():
         ESTADO_ROBO["eth_tamanho"] -= qtd_venda
         ESTADO_ROBO["eth_preco_referencia"] = eth_preco
         salvar_estado(ESTADO_ROBO)
-        enviar_telegram(f"💰 *[TRAFULHA VENDA]* ETH subiu {variacao_eth:.2f}%. Lucro encaixado: `$ {valor_recebido:,.2f}`!")
+        enviar_telegram(f"💰 *[VENDA ETH]* Subida de {variacao_eth:.2f}% (`$ {valor_recebido:,.2f}`)")
 
 def gerar_relatorio_carteira():
     global ESTADO_ROBO
@@ -292,35 +286,20 @@ def gerar_relatorio_carteira():
     eth_preco = precos.get("ETH", 0.0)
     
     if btc_preco == 0.0 or eth_preco == 0.0:
-        return "⚠️ Erro ao obter preços para o relatório."
+        return "⚠️ Erro ao obter preços."
 
-    btc_val = ESTADO_ROBO["btc_tamanho"] * btc_preco
-    eth_val = ESTADO_ROBO["eth_tamanho"] * eth_preco
-    total_pos = btc_val + eth_val
-    patrimonio = ESTADO_ROBO["caixa"] + total_pos
-    
+    patrimonio = ESTADO_ROBO["caixa"] + (ESTADO_ROBO["btc_tamanho"] * btc_preco) + (ESTADO_ROBO["eth_tamanho"] * eth_preco)
     lucro_hoje = patrimonio - ESTADO_ROBO["patrimonio_inicio_dia"]
-    emoji_hoje = "🟢" if lucro_hoje >= 0 else "🔴"
-    
     lucro_total = patrimonio - 10000.00
-    emoji_total = "🟢" if lucro_total >= 0 else "🔴"
-
+    
     return (
-        f"📊 *Relatório Periódico — Trafulha*\n\n"
-        f"🪙 *Preços Atuais*\n"
-        f"• **BTC**: `$ {btc_preco:,.2f}`\n"
-        f"• **ETH**: `$ {eth_preco:,.2f}`\n\n"
-        f"💰 *Métricas da Carteira*\n"
+        f"📊 *Relatório Trafulha (100% Cripto)*\n\n"
         f"• **Património Total**: `$ {patrimonio:,.2f}`\n"
         f"• **Saldo em Caixa**: `$ {ESTADO_ROBO['caixa']:,.2f}`\n"
-        f"• **Resultado de Hoje**: `$ {lucro_hoje:,.2f}` {emoji_hoje}\n"
-        f"• **Lucro Total Acumulado**: `$ {lucro_total:,.2f}` {emoji_total}"
+        f"• **Resultado de Hoje**: `$ {lucro_hoje:,.2f}`\n"
+        f"• **Lucro Total**: `$ {lucro_total:,.2f}`"
     )
 
-
-# ==========================================
-# 5. BACKGROUND LOOPS
-# ==========================================
 def loop_trading():
     while True:
         try:
@@ -333,13 +312,12 @@ def loop_relatorios():
     time.sleep(10)
     while True:
         try:
-            rel = gerar_relatorio_carteira()
-            enviar_telegram(rel)
+            enviar_telegram(gerar_relatorio_carteira())
         except Exception as e:
             print(f"Erro relatórios: {e}")
         time.sleep(1800)
 
-print("🤖 Robô Trafulha 100% Cripto Iniciado!")
+print("🤖 Trafulha 100% Cripto Ativo!")
 threading.Thread(target=loop_trading, daemon=True).start()
 threading.Thread(target=loop_relatorios, daemon=True).start()
 
