@@ -5,23 +5,38 @@ import requests
 import threading
 from datetime import datetime
 from http.server import HTTPServer, BaseHTTPRequestHandler
-
-ARQUIVO_ESTADO = "estado_trafulha.json"
+from pymongo import MongoClient
 
 # ==========================================
-# 1. GESTÃO DE ESTADO E PERSISTÊNCIA LIMPA
+# 1. LIGAÇÃO AO MONGODB ATLAS (NUVEM)
 # ==========================================
+MONGO_URI = os.getenv("MONGO_URI")
+db = None
+collection_estado = None
+
+if MONGO_URI:
+    try:
+        client = MongoClient(MONGO_URI)
+        db = client["trafulha_db"]
+        collection_estado = db["estado"]
+        print("☁️ Ligado ao MongoDB Atlas com sucesso!")
+    except Exception as e:
+        print(f"❌ Erro crítico ao ligar ao MongoDB: {e}")
+else:
+    print("⚠️ Aviso: A variável de ambiente MONGO_URI não foi detetada!")
+
 def carregar_estado():
-    # Se quiseres forçar a limpeza total ao arrancar, 
-    # podes apagar o ficheiro anterior no Render ou usar esta base limpa:
-    if os.path.exists(ARQUIVO_ESTADO):
+    if collection_estado is not None:
         try:
-            with open(ARQUIVO_ESTADO, "r") as f:
-                print("📂 Estado anterior recuperado com sucesso!")
-                return json.load(f)
+            dados_db = collection_estado.find_one({"_id": "trafulha_principal"})
+            if dados_db:
+                print("📂 Estado recuperado da nuvem com sucesso!")
+                dados_db.pop("_id", None)
+                return dados_db
         except Exception as e:
-            print(f"Erro ao ler ficheiro de estado: {e}")
-    
+            print(f"Erro ao ler do MongoDB: {e}")
+            
+    # Estado padrão caso a base de dados esteja vazia
     return {
         "inicializado": False,
         "caixa": 0.0,
@@ -34,15 +49,16 @@ def carregar_estado():
     }
 
 def salvar_estado(estado):
-    try:
-        with open(ARQUIVO_ESTADO, "w") as f:
-            json.dump(estado, f)
-    except Exception as e:
-        print(f"Erro ao salvar estado: {e}")
+    if collection_estado is not None:
+        try:
+            doc = estado.copy()
+            doc["_id"] = "trafulha_principal"
+            collection_estado.replace_one({"_id": "trafulha_principal"}, doc, upsert=True)
+        except Exception as e:
+            print(f"Erro ao salvar no MongoDB: {e}")
 
 ESTADO_ROBO = carregar_estado()
 
-# Histórico do gráfico começa totalmente limpo para a nova fase
 HISTORICO_GRAFICO = {
     "timestamps": [],
     "patrimonio": []
@@ -87,7 +103,7 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
             <body>
                 <h1>🤖 Trafulha Smart Trading - Live Chart</h1>
                 <div class="card">
-                    <h3>Evolução do Património Total (100% Cripto)</h3>
+                    <h3>Evolução do Património Total (100% Cripto - Nuvem)</h3>
                     <canvas id="graficoPatrimonio"></canvas>
                     <div class="status">🟢 Atualização automática em tempo real ativa</div>
                 </div>
@@ -134,7 +150,7 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
                     }
 
                     atualizarGrafico();
-                    setInterval(atualizarGrafico, 10000);
+                    setInterval(atualizarGrafico, 1000);
                 </script>
             </body>
             </html>
@@ -176,7 +192,7 @@ def enviar_telegram(mensagem):
 
 
 # ==========================================
-# 4. MOTOR DE TRADING
+# 4. MOTOR DE TRADING (60 SEGUNDOS)
 # ==========================================
 def obter_precos_mercado():
     precos = {"BTC": 0.0, "ETH": 0.0}
@@ -208,7 +224,6 @@ def avaliar_e_negociar():
 
     hoje = datetime.now().strftime("%Y-%m-%d")
 
-    # Força recomeço limpo se o estado anterior não estiver inicializado a 100% cripto
     if not ESTADO_ROBO["inicializado"] or ESTADO_ROBO["caixa"] > 0:
         ESTADO_ROBO["btc_tamanho"] = 5000.0 / btc_preco
         ESTADO_ROBO["btc_preco_referencia"] = btc_preco
@@ -219,13 +234,13 @@ def avaliar_e_negociar():
         ESTADO_ROBO["data_atual"] = hoje
         ESTADO_ROBO["inicializado"] = True
         salvar_estado(ESTADO_ROBO)
-        enviar_telegram("🟢 *[TRAFULHA]* Novo ciclo iniciado com 100% do capital alocado em cripto e gráfico limpo!")
+        enviar_telegram("🟢 *[TRAFULHA]* Ciclo na Nuvem (MongoDB) iniciado com 100% cripto!")
 
     btc_val = ESTADO_ROBO["btc_tamanho"] * btc_preco
     eth_val = ESTADO_ROBO["eth_tamanho"] * eth_preco
     patrimonio_atual = ESTADO_ROBO["caixa"] + btc_val + eth_val
 
-    # Regista o ponto atual para o gráfico em direto
+    # Regista o ponto atual para o gráfico
     hora_atual = datetime.now().strftime("%H:%M:%S")
     if not HISTORICO_GRAFICO["timestamps"] or HISTORICO_GRAFICO["timestamps"][-1] != hora_atual:
         HISTORICO_GRAFICO["timestamps"].append(hora_atual)
@@ -293,7 +308,7 @@ def gerar_relatorio_carteira():
     lucro_total = patrimonio - 10000.00
     
     return (
-        f"📊 *Relatório Trafulha (100% Cripto)*\n\n"
+        f"📊 *Relatório Trafulha (Nuvem)*\n\n"
         f"• **Património Total**: `$ {patrimonio:,.2f}`\n"
         f"• **Saldo em Caixa**: `$ {ESTADO_ROBO['caixa']:,.2f}`\n"
         f"• **Resultado de Hoje**: `$ {lucro_hoje:,.2f}`\n"
@@ -306,7 +321,7 @@ def loop_trading():
             avaliar_e_negociar()
         except Exception as e:
             print(f"Erro trading: {e}")
-        time.sleep(60)
+        time.sleep(60) # Avaliação a cada 1 minuto
 
 def loop_relatorios():
     time.sleep(10)
@@ -317,7 +332,7 @@ def loop_relatorios():
             print(f"Erro relatórios: {e}")
         time.sleep(1800)
 
-print("🤖 Trafulha 100% Cripto Ativo!")
+print("🤖 Trafulha com MongoDB Ativo iniciado!")
 threading.Thread(target=loop_trading, daemon=True).start()
 threading.Thread(target=loop_relatorios, daemon=True).start()
 
