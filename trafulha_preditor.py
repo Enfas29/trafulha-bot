@@ -13,12 +13,14 @@ from pymongo import MongoClient
 MONGO_URI = os.getenv("MONGO_URI")
 db = None
 collection_estado = None
+collection_historico = None
 
 if MONGO_URI:
     try:
         client = MongoClient(MONGO_URI)
         db = client["trafulha_db"]
         collection_estado = db["estado"]
+        collection_historico = db["historico_grafico"]
         print("☁️ Ligado ao MongoDB Atlas com sucesso!")
     except Exception as e:
         print(f"❌ Erro crítico ao ligar ao MongoDB: {e}")
@@ -36,7 +38,6 @@ def carregar_estado():
         except Exception as e:
             print(f"Erro ao ler do MongoDB: {e}")
             
-    # Estado padrão caso a base de dados esteja vazia
     return {
         "inicializado": False,
         "caixa": 0.0,
@@ -57,15 +58,43 @@ def salvar_estado(estado):
         except Exception as e:
             print(f"Erro ao salvar no MongoDB: {e}")
 
+def carregar_historico_nuvem():
+    timestamps = []
+    patrimonio = []
+    if collection_historico is not None:
+        try:
+            # Ordena por _id ou data para manter a ordem cronológica
+            registos = collection_historico.find().sort("timestamp_ordenado", 1)
+            for reg in registos:
+                timestamps.append(reg["hora"])
+                patrimonio.append(reg["valor"])
+        except Exception as e:
+            print(f"Erro ao carregar histórico: {e}")
+    return timestamps, patrimonio
+
+def salvar_ponto_historico(hora, valor):
+    if collection_historico is not None:
+        try:
+            doc = {
+                "timestamp_ordenado": datetime.now(),
+                "hora": hora,
+                "valor": valor
+            }
+            collection_historico.insert_one(doc)
+        except Exception as e:
+            print(f"Erro ao salvar ponto no histórico: {e}")
+
 ESTADO_ROBO = carregar_estado()
 
+# Carrega o histórico completo guardado na nuvem desde o início
+ts_inicial, pat_inicial = carregar_historico_nuvem()
 HISTORICO_GRAFICO = {
-    "timestamps": [],
-    "patrimonio": []
+    "timestamps": ts_inicial,
+    "patrimonio": pat_inicial
 }
 
 # ==========================================
-# 2. SERVIDOR WEB COM AUTO-REFRESH
+# 2. SERVIDOR WEB COM GRÁFICO GLOBAL
 # ==========================================
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -95,17 +124,17 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
                 <style>
                     body { font-family: Arial, sans-serif; background-color: #0f172a; color: #f8fafc; text-align: center; margin: 0; padding: 20px; }
                     h1 { color: #38bdf8; }
-                    .card { background: #1e293b; padding: 20px; border-radius: 12px; max-width: 800px; margin: 20px auto; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
-                    canvas { max-height: 400px; }
+                    .card { background: #1e293b; padding: 20px; border-radius: 12px; max-width: 900px; margin: 20px auto; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+                    canvas { max-height: 450px; }
                     .status { font-size: 14px; color: #10b981; margin-top: 10px; }
                 </style>
             </head>
             <body>
                 <h1>🤖 Trafulha Smart Trading - Live Chart</h1>
                 <div class="card">
-                    <h3>Evolução do Património Total (100% Cripto - Nuvem)</h3>
+                    <h3>Evolução Completa do Património (Desde o Início)</h3>
                     <canvas id="graficoPatrimonio"></canvas>
-                    <div class="status">🟢 Atualização automática em tempo real ativa</div>
+                    <div class="status">🟢 Histórico persistente na nuvem ativo</div>
                 </div>
                 <script>
                     const ctx = document.getElementById('graficoPatrimonio').getContext('2d');
@@ -127,12 +156,8 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
                             responsive: true,
                             plugins: { legend: { labels: { color: '#f8fafc' } } },
                             scales: {
-                                x: { ticks: { color: '#94a3b8' } },
-                                y: { 
-                                    ticks: { color: '#94a3b8' },
-                                    suggestedMin: 9800,
-                                    suggestedMax: 10200
-                                }
+                                x: { ticks: { color: '#94a3b8', maxTicksLimit: 10 } },
+                                y: { ticks: { color: '#94a3b8' } }
                             }
                         }
                     });
@@ -150,7 +175,7 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
                     }
 
                     atualizarGrafico();
-                    setInterval(atualizarGrafico, 1000);
+                    setInterval(atualizarGrafico, 2000);
                 </script>
             </body>
             </html>
@@ -240,14 +265,14 @@ def avaliar_e_negociar():
     eth_val = ESTADO_ROBO["eth_tamanho"] * eth_preco
     patrimonio_atual = ESTADO_ROBO["caixa"] + btc_val + eth_val
 
-    # Regista o ponto atual para o gráfico
-    hora_atual = datetime.now().strftime("%H:%M:%S")
-    if not HISTORICO_GRAFICO["timestamps"] or HISTORICO_GRAFICO["timestamps"][-1] != hora_atual:
-        HISTORICO_GRAFICO["timestamps"].append(hora_atual)
+    # Regista e guarda permanentemente na nuvem o ponto do gráfico
+    hora_atual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    hora_curta = datetime.now().strftime("%H:%M:%S")
+    
+    if not HISTORICO_GRAFICO["timestamps"] or HISTORICO_GRAFICO["timestamps"][-1] != hora_curta:
+        HISTORICO_GRAFICO["timestamps"].append(hora_curta)
         HISTORICO_GRAFICO["patrimonio"].append(round(patrimonio_atual, 2))
-        if len(HISTORICO_GRAFICO["timestamps"]) > 50:
-            HISTORICO_GRAFICO["timestamps"].pop(0)
-            HISTORICO_GRAFICO["patrimonio"].pop(0)
+        salvar_ponto_historico(hora_curta, round(patrimonio_atual, 2))
 
     # Mudança de dia
     if hoje != ESTADO_ROBO["data_atual"]:
@@ -321,7 +346,7 @@ def loop_trading():
             avaliar_e_negociar()
         except Exception as e:
             print(f"Erro trading: {e}")
-        time.sleep(60) # Avaliação a cada 1 minuto
+        time.sleep(60)
 
 def loop_relatorios():
     time.sleep(10)
@@ -332,7 +357,7 @@ def loop_relatorios():
             print(f"Erro relatórios: {e}")
         time.sleep(1800)
 
-print("🤖 Trafulha com MongoDB Ativo iniciado!")
+print("🤖 Trafulha com Histórico Global no MongoDB Ativo!")
 threading.Thread(target=loop_trading, daemon=True).start()
 threading.Thread(target=loop_relatorios, daemon=True).start()
 
