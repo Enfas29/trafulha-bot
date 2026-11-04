@@ -63,7 +63,6 @@ def carregar_historico_nuvem():
     patrimonio = []
     if collection_historico is not None:
         try:
-            # Ordena por _id ou data para manter a ordem cronológica
             registos = collection_historico.find().sort("timestamp_ordenado", 1)
             for reg in registos:
                 timestamps.append(reg["hora"])
@@ -86,7 +85,6 @@ def salvar_ponto_historico(hora, valor):
 
 ESTADO_ROBO = carregar_estado()
 
-# Carrega o histórico completo guardado na nuvem desde o início
 ts_inicial, pat_inicial = carregar_historico_nuvem()
 HISTORICO_GRAFICO = {
     "timestamps": ts_inicial,
@@ -132,9 +130,9 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
             <body>
                 <h1>🤖 Trafulha Smart Trading - Live Chart</h1>
                 <div class="card">
-                    <h3>Evolução Completa do Património (Desde o Início)</h3>
+                    <h3>Evolução Completa do Património (Anti-Drawdown Ativo)</h3>
                     <canvas id="graficoPatrimonio"></canvas>
-                    <div class="status">🟢 Histórico persistente na nuvem ativo</div>
+                    <div class="status">🟢 Gestão de risco otimizada na nuvem</div>
                 </div>
                 <script>
                     const ctx = document.getElementById('graficoPatrimonio').getContext('2d');
@@ -217,7 +215,7 @@ def enviar_telegram(mensagem):
 
 
 # ==========================================
-# 4. MOTOR DE TRADING (60 SEGUNDOS)
+# 4. MOTOR DE TRADING INTELIGENTE (60s)
 # ==========================================
 def obter_precos_mercado():
     precos = {"BTC": 0.0, "ETH": 0.0}
@@ -259,22 +257,20 @@ def avaliar_e_negociar():
         ESTADO_ROBO["data_atual"] = hoje
         ESTADO_ROBO["inicializado"] = True
         salvar_estado(ESTADO_ROBO)
-        enviar_telegram("🟢 *[TRAFULHA]* Ciclo na Nuvem (MongoDB) iniciado com 100% cripto!")
+        enviar_telegram("🟢 *[TRAFULHA]* Ciclo Anti-Drawdown Ativo (100% Cripto)!")
 
     btc_val = ESTADO_ROBO["btc_tamanho"] * btc_preco
     eth_val = ESTADO_ROBO["eth_tamanho"] * eth_preco
     patrimonio_atual = ESTADO_ROBO["caixa"] + btc_val + eth_val
 
-    # Regista e guarda permanentemente na nuvem o ponto do gráfico
-    hora_atual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # Registo para o gráfico histórico na nuvem
     hora_curta = datetime.now().strftime("%H:%M:%S")
-    
     if not HISTORICO_GRAFICO["timestamps"] or HISTORICO_GRAFICO["timestamps"][-1] != hora_curta:
         HISTORICO_GRAFICO["timestamps"].append(hora_curta)
         HISTORICO_GRAFICO["patrimonio"].append(round(patrimonio_atual, 2))
         salvar_ponto_historico(hora_curta, round(patrimonio_atual, 2))
 
-    # Mudança de dia
+    # Mudança de dia e fecho de ganhos
     if hoje != ESTADO_ROBO["data_atual"]:
         lucro_ontem = patrimonio_atual - ESTADO_ROBO["patrimonio_inicio_dia"]
         emoji_ontem = "🟢" if lucro_ontem >= 0 else "🔴"
@@ -283,15 +279,29 @@ def avaliar_e_negociar():
         ESTADO_ROBO["patrimonio_inicio_dia"] = patrimonio_atual
         salvar_estado(ESTADO_ROBO)
 
-    # Lógica de Trading BTC
+    # ----------------------------------------------------
+    # LÓGICA DE TRADING BTC (Com Stop Loss de Proteção)
+    # ----------------------------------------------------
     variacao_btc = ((btc_preco - ESTADO_ROBO["btc_preco_referencia"]) / ESTADO_ROBO["btc_preco_referencia"]) * 100
-    if variacao_btc <= -0.6 and ESTADO_ROBO["caixa"] >= 500:
+    
+    # PROTEÇÃO ANTI-DRAWDOWN: Se o preço despencar mais de -3.0%, corta para evitar buracos profundos
+    if variacao_btc <= -3.0 and ESTADO_ROBO["btc_tamanho"] > 0:
+        qtd_corte = ESTADO_ROBO["btc_tamanho"] * 0.50 # Corta metade da exposição
+        valor_recuperado = qtd_corte * btc_preco
+        ESTADO_ROBO["caixa"] += valor_recuperado
+        ESTADO_ROBO["btc_tamanho"] -= qtd_corte
+        ESTADO_ROBO["btc_preco_referencia"] = btc_preco
+        salvar_estado(ESTADO_ROBO)
+        enviar_telegram(f"🛡️ *[STOP LOSS BTC]* Queda drástica de {variacao_btc:.2f}%. Posição reduzida para defesa!")
+
+    elif variacao_btc <= -0.6 and ESTADO_ROBO["caixa"] >= 500:
         qtd = 500.0 / btc_preco
         ESTADO_ROBO["caixa"] -= 500.0
         ESTADO_ROBO["btc_tamanho"] += qtd
         ESTADO_ROBO["btc_preco_referencia"] = btc_preco
         salvar_estado(ESTADO_ROBO)
         enviar_telegram(f"🟢 *[COMPRA BTC]* Queda de {variacao_btc:.2f}% (`{qtd:.4f} BTC`)")
+        
     elif variacao_btc >= 1.0 and ESTADO_ROBO["btc_tamanho"] > 0:
         qtd_venda = ESTADO_ROBO["btc_tamanho"] * 0.25
         valor_recebido = qtd_venda * btc_preco
@@ -301,15 +311,29 @@ def avaliar_e_negociar():
         salvar_estado(ESTADO_ROBO)
         enviar_telegram(f"💰 *[VENDA BTC]* Subida de {variacao_btc:.2f}% (`$ {valor_recebido:,.2f}`)")
 
-    # Lógica de Trading ETH
+    # ----------------------------------------------------
+    # LÓGICA DE TRADING ETH (Com Stop Loss de Proteção)
+    # ----------------------------------------------------
     variacao_eth = ((eth_preco - ESTADO_ROBO["eth_preco_referencia"]) / ESTADO_ROBO["eth_preco_referencia"]) * 100
-    if variacao_eth <= -0.6 and ESTADO_ROBO["caixa"] >= 500:
+    
+    # PROTEÇÃO ANTI-DRAWDOWN ETH
+    if variacao_eth <= -3.0 and ESTADO_ROBO["eth_tamanho"] > 0:
+        qtd_corte = ESTADO_ROBO["eth_tamanho"] * 0.50
+        valor_recuperado = qtd_corte * eth_preco
+        ESTADO_ROBO["caixa"] += valor_recuperado
+        ESTADO_ROBO["eth_tamanho"] -= qtd_corte
+        ESTADO_ROBO["eth_preco_referencia"] = eth_preco
+        salvar_estado(ESTADO_ROBO)
+        enviar_telegram(f"🛡️ *[STOP LOSS ETH]* Queda drástica de {variacao_eth:.2f}%. Posição reduzida para defesa!")
+
+    elif variacao_eth <= -0.6 and ESTADO_ROBO["caixa"] >= 500:
         qtd = 500.0 / eth_preco
         ESTADO_ROBO["caixa"] -= 500.0
         ESTADO_ROBO["eth_tamanho"] += qtd
         ESTADO_ROBO["eth_preco_referencia"] = eth_preco
         salvar_estado(ESTADO_ROBO)
         enviar_telegram(f"🟢 *[COMPRA ETH]* Queda de {variacao_eth:.2f}% (`{qtd:.4f} ETH`)")
+        
     elif variacao_eth >= 1.0 and ESTADO_ROBO["eth_tamanho"] > 0:
         qtd_venda = ESTADO_ROBO["eth_tamanho"] * 0.25
         valor_recebido = qtd_venda * eth_preco
@@ -333,7 +357,7 @@ def gerar_relatorio_carteira():
     lucro_total = patrimonio - 10000.00
     
     return (
-        f"📊 *Relatório Trafulha (Nuvem)*\n\n"
+        f"📊 *Relatório Trafulha (Anti-Drawdown)*\n\n"
         f"• **Património Total**: `$ {patrimonio:,.2f}`\n"
         f"• **Saldo em Caixa**: `$ {ESTADO_ROBO['caixa']:,.2f}`\n"
         f"• **Resultado de Hoje**: `$ {lucro_hoje:,.2f}`\n"
@@ -357,7 +381,7 @@ def loop_relatorios():
             print(f"Erro relatórios: {e}")
         time.sleep(1800)
 
-print("🤖 Trafulha com Histórico Global no MongoDB Ativo!")
+print("🤖 Trafulha Anti-Drawdown com MongoDB Ativo!")
 threading.Thread(target=loop_trading, daemon=True).start()
 threading.Thread(target=loop_relatorios, daemon=True).start()
 
