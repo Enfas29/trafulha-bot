@@ -284,8 +284,8 @@ def avaliar_e_negociar():
     # ----------------------------------------------------
     variacao_btc = ((btc_preco - ESTADO_ROBO["btc_preco_referencia"]) / ESTADO_ROBO["btc_preco_referencia"]) * 100
     
-    # PROTEÇÃO ANTI-DRAWDOWN: Se o preço despencar mais de -3.0%, corta para evitar buracos profundos
-    if variacao_btc <= -3.0 and ESTADO_ROBO["btc_tamanho"] > 0:
+    # PROTEÇÃO ANTI-DRAWDOWN: Se o preço despencar mais de -1.5%, corta para evitar buracos profundos
+    if variacao_btc <= -1.5 and ESTADO_ROBO["btc_tamanho"] > 0:
         qtd_corte = ESTADO_ROBO["btc_tamanho"] * 0.50 # Corta metade da exposição
         valor_recuperado = qtd_corte * btc_preco
         ESTADO_ROBO["caixa"] += valor_recuperado
@@ -302,7 +302,7 @@ def avaliar_e_negociar():
         salvar_estado(ESTADO_ROBO)
         enviar_telegram(f"🟢 *[COMPRA BTC]* Queda de {variacao_btc:.2f}% (`{qtd:.4f} BTC`)")
         
-    elif variacao_btc >= 1.0 and ESTADO_ROBO["btc_tamanho"] > 0:
+    elif variacao_btc >= 2.0 and ESTADO_ROBO["btc_tamanho"] > 0:
         qtd_venda = ESTADO_ROBO["btc_tamanho"] * 0.25
         valor_recebido = qtd_venda * btc_preco
         ESTADO_ROBO["caixa"] += valor_recebido
@@ -317,7 +317,7 @@ def avaliar_e_negociar():
     variacao_eth = ((eth_preco - ESTADO_ROBO["eth_preco_referencia"]) / ESTADO_ROBO["eth_preco_referencia"]) * 100
     
     # PROTEÇÃO ANTI-DRAWDOWN ETH
-    if variacao_eth <= -3.0 and ESTADO_ROBO["eth_tamanho"] > 0:
+    if variacao_eth <= -1.5 and ESTADO_ROBO["eth_tamanho"] > 0:
         qtd_corte = ESTADO_ROBO["eth_tamanho"] * 0.50
         valor_recuperado = qtd_corte * eth_preco
         ESTADO_ROBO["caixa"] += valor_recuperado
@@ -334,7 +334,7 @@ def avaliar_e_negociar():
         salvar_estado(ESTADO_ROBO)
         enviar_telegram(f"🟢 *[COMPRA ETH]* Queda de {variacao_eth:.2f}% (`{qtd:.4f} ETH`)")
         
-    elif variacao_eth >= 1.0 and ESTADO_ROBO["eth_tamanho"] > 0:
+    elif variacao_eth >= 2.0 and ESTADO_ROBO["eth_tamanho"] > 0:
         qtd_venda = ESTADO_ROBO["eth_tamanho"] * 0.25
         valor_recebido = qtd_venda * eth_preco
         ESTADO_ROBO["caixa"] += valor_recebido
